@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#FFAECBFA</color>
+    <color name="brand_secondary">#FFFDE293</color>
+    <color name="brand_error">#FFF28B82</color>
+    <color name="surface_dark">#FF111318</color>
+    <color name="on_surface">#FFE6F0FF</color>
+    <color name="launcher_background">#FF111318</color>
+</resources>
