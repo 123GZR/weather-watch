@@ -12,7 +12,6 @@ import kotlinx.serialization.json.Json
 import okhttp3.HttpURLConnection
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import kotlin.system.currentTimeMillis
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -55,7 +54,7 @@ class OpenWeatherRepository(
         val daily: List<OwmDaily>
     ) {
         fun toSnapshot(): WeatherSnapshot {
-            val now = currentTimeMillis()
+            val now = System.currentTimeMillis()
             val current = CurrentWeather(
                 temp = current.temp,
                 feelsLike = current.feelsLike,

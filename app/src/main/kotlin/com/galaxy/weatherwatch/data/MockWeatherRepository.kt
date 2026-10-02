@@ -6,7 +6,6 @@ import com.galaxy.weatherwatch.data.model.HourlyForecast
 import com.galaxy.weatherwatch.data.model.WeatherIcon
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
 import kotlinx.coroutines.delay
-import kotlin.system.currentTimeMillis
 
 /**
  * MVP 阶段用于打通 UI 与交互的本地假数据源。
@@ -31,7 +30,7 @@ class MockWeatherRepository(
     }
 
     private fun buildSnapshot(): WeatherSnapshot {
-        val now = currentTimeMillis()
+        val now = System.currentTimeMillis()
         val current = CurrentWeather(
             temp = 18.5,
             feelsLike = 17.2,
