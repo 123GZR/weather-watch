@@ -101,6 +101,9 @@ dependencies {
     // Networking
     implementation(libs.okhttp)
 
+    // Performance: 在 debug/release 包中安装 Baseline Profile，提升首帧与滚动流畅度
+    implementation(libs.androidx.profileinstaller)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

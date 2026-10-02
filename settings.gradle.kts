@@ -30,3 +30,5 @@ dependencyResolutionManagement {
 rootProject.name = "WeatherApp"
 // 引入 app 模块 (根据你截图的项目结构，模块名应该是 app)
 include(":app")
+// Baseline Profile 生成模块（com.android.test）：在手表上生成组合基线配置
+include(":baselineprofile")
