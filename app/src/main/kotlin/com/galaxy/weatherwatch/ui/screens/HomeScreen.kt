@@ -31,9 +31,9 @@ import com.galaxy.weatherwatch.data.model.DailySummary
 import com.galaxy.weatherwatch.data.model.HourlyForecast
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
 import com.galaxy.weatherwatch.ui.components.WeatherIcon
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun HomeScreen(
@@ -54,20 +54,21 @@ fun HomeScreen(
             // 绑定 focusRequester，这里只需提供 snap 行为。
             rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState = listState)
         ) {
-            item { CurrentWeatherHeader(snapshot.current) }
-            item { TodaySummaryRow(snapshot.today) }
-            item { Spacer(modifier = Modifier.height(4.dp)) }
-            item {
+            item(key = "current-header") { CurrentWeatherHeader(snapshot.current) }
+            item(key = "today-summary") { TodaySummaryRow(snapshot.today) }
+            item(key = "divider") { Spacer(modifier = Modifier.height(4.dp)) }
+            item(key = "hourly-title") {
                 Text(
                     text = "逐时预报",
                     style = MaterialTheme.typography.title3,
                     color = MaterialTheme.colors.onSurface
                 )
             }
+            // 稳定 key：刷新后同一小时的 item 直接跳过重组，只重组数据变化的行
             snapshot.hourly.forEach { forecast ->
-                item { HourlyForecastRow(forecast) }
+                item(key = "hourly-${forecast.epochSecond}") { HourlyForecastRow(forecast) }
             }
-            item {
+            item(key = "refresh-footer") {
                 RefreshFooter(
                     updatedAt = snapshot.current.updatedAt,
                     isRefreshing = isRefreshing,
@@ -140,7 +141,8 @@ private fun RefreshFooter(
     onRefresh: () -> Unit
 ) {
     val time = remember(updatedAt) {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(updatedAt))
+        val formatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+        formatter.format(Instant.ofEpochMilli(updatedAt))
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -166,7 +168,8 @@ private fun RefreshFooter(
 @Composable
 private fun HourlyForecastRow(item: HourlyForecast) {
     val time = remember(item.epochSecond) {
-        SimpleDateFormat("HH", Locale.getDefault()).format(Date(item.epochSecond * 1000))
+        val formatter = DateTimeFormatter.ofPattern("HH").withZone(ZoneId.systemDefault())
+        formatter.format(Instant.ofEpochSecond(item.epochSecond))
     }
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
