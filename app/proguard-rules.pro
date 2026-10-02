@@ -5,14 +5,8 @@
 -keepclassmembers class kotlinx.serialization.json.** {
     *** Companion;
 }
--keepclassesWithStringConcatenationClassBody kotlinx.serialization.json.** {
-    *** Companion;
-}
 -keep,includedescriptorclasses class com.galaxy.weatherwatch.**$$serializer { *** Companion; }
 -keepclassmembers class com.galaxy.weatherwatch.** {
-    *** Companion;
-}
--keepclassesWithStringConcatenationClassBody com.galaxy.weatherwatch.** {
     *** Companion;
 }
 
