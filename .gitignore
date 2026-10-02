@@ -42,3 +42,6 @@ captures/
 # API keys / secrets
 api-keys.properties
 secrets.properties
+
+# 会话导出产物（harness 生成）
+deepseek_markdown_*.md
