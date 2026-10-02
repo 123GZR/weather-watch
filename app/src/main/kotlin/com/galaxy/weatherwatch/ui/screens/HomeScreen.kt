@@ -1,5 +1,6 @@
 package com.galaxy.weatherwatch.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +49,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
+    val bgColor = MaterialTheme.colors.background
 
     Box(modifier = modifier.fillMaxSize()) {
         ScalingLazyColumn(
@@ -80,7 +85,16 @@ fun HomeScreen(
             }
         }
 
-        // 顶部固定位置条
+        // 顶部渐隐遮罩：让滚动内容在位置条下方自然淡出
+        TopFadeOverlay(
+            backgroundColor = bgColor,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(56.dp)
+        )
+
+        // 顶部固定位置条（在遮罩之上）
         LocationBar(
             locationName = snapshot.locationName,
             modifier = Modifier
@@ -89,6 +103,31 @@ fun HomeScreen(
         )
 
         PositionIndicator(scalingLazyListState = listState)
+    }
+}
+
+/**
+ * 顶部渐隐遮罩：
+ * 顶部与背景色一致（不透明），向下逐渐过渡到透明，
+ * 让 ScalingLazyColumn 中向上滚动的内容在位置条区域自然"消失"。
+ */
+@Composable
+private fun TopFadeOverlay(
+    backgroundColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val brush = remember(backgroundColor) {
+        Brush.verticalGradient(
+            colorStops = arrayOf(
+                0.0f to backgroundColor,
+                0.65f to backgroundColor.copy(alpha = 0.85f),
+                1.0f to backgroundColor.copy(alpha = 0f)
+            )
+        )
+    }
+
+    Canvas(modifier = modifier) {
+        drawRect(brush = brush)
     }
 }
 
