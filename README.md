@@ -32,6 +32,26 @@
 6. 把 APK 文件传到手机（微信/QQ/USB 均可）
 7. 在 WearOS 工具箱中选 APK 安装
 
+## 性能优化（P0，已完成）
+
+- 数据模型加 `@Immutable`，Compose 编译器可跳过未变化子树的重组
+- `uiState`/`isRefreshing` 合并为单一状态流，一次刷新只触发一轮重组
+- 列表 item 使用稳定 `key`，刷新时只重组数据变化的行
+- 天气图标由 emoji 改为 Canvas 矢量绘制，消除手表字体回退扫描卡顿
+- 开启 Compose strong skipping（`composeCompiler.enableStrongSkipping`）
+- 集成 Baseline Profile（profileinstaller + `:baselineprofile` 生成模块）
+
+## 生成 Baseline Profile（可选，建议做一次）
+
+手表开启 ADB/无线调试并连接电脑后执行，生成结果会自动打包进 APK：
+
+```bash
+./gradlew :baselineprofile:generateBaselineProfile
+```
+
+生成一次后重新 Build APK 并安装，首次启动时 profileinstaller 会预编译热路径，
+进一步提升首帧与滚动流畅度；未生成时不影响功能，只是暂不享受基线优化。
+
 ## 项目结构
 
 ```
@@ -67,7 +87,8 @@ app/
     └── test/kotlin/com/galaxy/weatherwatch/
         ├── data/MockWeatherRepositoryTest.kt
         ├── data/model/WeatherIconTest.kt
-        └── ui/WeatherViewModelTest.kt
+        ├── ui/WeatherViewModelTest.kt
+        └── ui/components/WeatherIconGlyphTest.kt
 ```
 
 ## 里程碑进度
