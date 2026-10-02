@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.galaxy.weatherwatch.ui.WeatherUiState
@@ -17,6 +18,7 @@ import com.galaxy.weatherwatch.ui.WeatherUiState
 @Composable
 fun ErrorScreen(
     type: WeatherUiState.ErrorType,
+    isRefreshing: Boolean,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -38,8 +40,12 @@ fun ErrorScreen(
                 style = MaterialTheme.typography.body2,
                 color = MaterialTheme.colors.onSurface
             )
-            Button(onClick = onRetry) {
-                Text(text = if (type == WeatherUiState.ErrorType.PERMISSION_DENIED) "去设置" else "重试")
+            Button(onClick = onRetry, enabled = !isRefreshing) {
+                if (isRefreshing) {
+                    CircularProgressIndicator()
+                } else {
+                    Text(text = if (type == WeatherUiState.ErrorType.PERMISSION_DENIED) "去设置" else "重试")
+                }
             }
         }
     }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class WeatherViewModel(
@@ -19,9 +20,6 @@ class WeatherViewModel(
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
     val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
-
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private var refreshJob: Job? = null
 
@@ -32,19 +30,22 @@ class WeatherViewModel(
     fun refresh() {
         if (refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
-            _isRefreshing.value = true
-            if (_uiState.value !is WeatherUiState.Success) {
-                _uiState.value = WeatherUiState.Loading
+            // 已有数据时保留旧快照、只翻转刷新标记，避免整屏闪回 Loading；
+            // 状态合并为单一 StateFlow，一次刷新只推送一次状态、只触发一轮重组。
+            _uiState.update { previous ->
+                when (previous) {
+                    is WeatherUiState.Success -> previous.copy(isRefreshing = true)
+                    else -> WeatherUiState.Loading
+                }
             }
             // TODO(里程碑2): 用 FusedLocationProviderClient 取真实 GPS
             val lat = 39.9042
             val lon = 116.4074
             val result = repository.fetchWeather(lat, lon)
-            result.fold(
-                onSuccess = { _uiState.value = WeatherUiState.Success(it) },
-                onFailure = { _uiState.value = WeatherUiState.Error(it.toErrorType()) }
+            _uiState.value = result.fold(
+                onSuccess = { WeatherUiState.Success(it) },
+                onFailure = { WeatherUiState.Error(it.toErrorType()) }
             )
-            _isRefreshing.value = false
         }
     }
 }
@@ -59,8 +60,15 @@ private fun Throwable.toErrorType(): WeatherUiState.ErrorType = when (this) {
 
 sealed interface WeatherUiState {
     data object Loading : WeatherUiState
-    data class Success(val snapshot: WeatherSnapshot) : WeatherUiState
-    data class Error(val type: ErrorType) : WeatherUiState
+    data class Success(
+        val snapshot: WeatherSnapshot,
+        val isRefreshing: Boolean = false
+    ) : WeatherUiState
+
+    data class Error(
+        val type: ErrorType,
+        val isRefreshing: Boolean = false
+    ) : WeatherUiState
 
     enum class ErrorType {
         PERMISSION_DENIED,
