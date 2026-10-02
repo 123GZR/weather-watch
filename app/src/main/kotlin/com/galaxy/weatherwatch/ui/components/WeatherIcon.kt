@@ -36,8 +36,11 @@ fun WeatherIcon(
     modifier: Modifier = Modifier
 ) {
     val glyphColor = MaterialTheme.colors.onSurface
-    val backgroundColor = remember(MaterialTheme.colors.primary) {
-        MaterialTheme.colors.primary.copy(alpha = 0.18f)
+    // MaterialTheme.colors 是 @Composable getter，先在组合作用域取值，
+    // 再放入 remember 的 key 与 lambda，避免非组合上下文调用报错
+    val primaryColor = MaterialTheme.colors.primary
+    val backgroundColor = remember(primaryColor) {
+        primaryColor.copy(alpha = 0.18f)
     }
     // PathOperation.Difference 求差集开销较大，组合期缓存一次，绘制期直接复用
     val moonPath = remember { buildMoonCrescentPath() }
