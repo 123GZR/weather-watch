@@ -2,6 +2,27 @@
 
 为 Galaxy Watch 4 Classic 打造的独立天气应用，利用机械表圈浏览逐时预报。
 
+基于 **Kotlin + Jetpack Compose + Wear OS** 技术栈，采用 MVVM 架构，注重手表端性能优化。
+
+---
+
+## 目录
+
+- [环境要求](#环境要求)
+- [首次打开](#首次打开)
+- [调试链路（无 WLAN）](#调试链路无-wlan)
+- [项目结构](#项目结构)
+- [架构概览](#架构概览)
+- [核心特性](#核心特性)
+- [性能优化](#性能优化)
+- [生成 Baseline Profile](#生成-baseline-profile可选建议做一次)
+- [测试](#测试)
+- [数据源](#数据源)
+- [里程碑进度](#里程碑进度)
+- [开发文档](#开发文档)
+
+---
+
 ## 环境要求
 
 | 组件 | 版本 |
@@ -11,6 +32,12 @@
 | Android SDK Platform | API 34（或 API 35） |
 | Gradle | 8.9（自动下载） |
 | Kotlin | 2.0.20 |
+| AGP | 8.6.0 |
+| Wear Compose | 1.4.0 |
+
+依赖版本统一管理在 `gradle/libs.versions.toml`，升级依赖请修改该文件。
+
+---
 
 ## 首次打开
 
@@ -19,6 +46,10 @@
    - 如果提示 `gradle-wrapper.jar` 缺失，在 Studio 弹窗中选择 "Use Gradle Wrapper" 即可自动补全
 3. SDK Manager 勾选 API 34（或 35）+ Build-Tools
 4. 等待首次 Sync 完成
+
+> 项目已配置阿里云 Maven 镜像，国内网络环境下依赖下载通常无需额外配置。
+
+---
 
 ## 调试链路（无 WLAN）
 
@@ -32,6 +63,104 @@
 6. 把 APK 文件传到手机（微信/QQ/USB 均可）
 7. 在 WearOS 工具箱中选 APK 安装
 
+---
+
+## 项目结构
+
+```
+app/                                    # 主应用模块
+├── build.gradle.kts                    # 模块依赖与编译配置
+├── proguard-rules.pro
+└── src/
+    ├── main/
+    │   ├── AndroidManifest.xml         # 权限、MainActivity、Wear OS 声明
+    │   ├── kotlin/com/galaxy/weatherwatch/
+    │   │   ├── WeatherApplication.kt   # Application 入口
+    │   │   ├── MainActivity.kt         # 主 Activity
+    │   │   ├── data/                   # 数据层
+    │   │   │   ├── model/
+    │   │   │   │   ├── Weather.kt      # 数据模型（Immutable）
+    │   │   │   │   └── WeatherIcon.kt  # OWM 图标枚举
+    │   │   │   ├── WeatherRepository.kt       # 仓库接口
+    │   │   │   ├── MockWeatherRepository.kt   # 本地假数据（当前使用）
+    │   │   │   └── OpenWeatherRepository.kt   # One Call API 3.0 实现
+    │   │   └── ui/                     # UI 层
+    │   │       ├── WeatherAppScreen.kt # 顶层路由（状态分发）
+    │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态
+    │   │       ├── theme/Theme.kt      # 主题配置
+    │   │       ├── components/
+    │   │       │   └── WeatherIcon.kt  # Canvas 矢量天气图标
+    │   │       └── screens/
+    │   │           ├── HomeScreen.kt   # 实时天气+今日摘要+逐时列表
+    │   │           ├── LoadingScreen.kt
+    │   │           └── ErrorScreen.kt
+    │   └── res/
+    │       ├── values/{strings,colors,themes}.xml
+    │       ├── drawable/ic_launcher_foreground.xml
+    │       └── mipmap-anydpi-v26/ic_launcher{,_round}.xml
+    └── test/kotlin/com/galaxy/weatherwatch/
+        ├── util/MainDispatcherRule.kt  # 协程测试调度器规则
+        ├── data/MockWeatherRepositoryTest.kt
+        ├── data/OpenWeatherRepositoryTest.kt
+        ├── data/model/WeatherIconTest.kt
+        ├── ui/WeatherViewModelTest.kt
+        ├── ui/components/WeatherIconGlyphTest.kt
+        └── ui/theme/ThemeTest.kt
+
+baselineprofile/                        # Baseline Profile 生成模块
+└── src/main/kotlin/.../BaselineProfileGenerator.kt
+```
+
+---
+
+## 架构概览
+
+项目采用 **MVVM + Repository** 架构：
+
+```
+┌─────────────────────────────────────────────┐
+│                  UI Layer                    │
+│  Screens / Components / WeatherAppScreen     │
+│              (Jetpack Compose)               │
+└──────────────────┬──────────────────────────┘
+                   │ StateFlow (collectAsState)
+                   ▼
+┌─────────────────────────────────────────────┐
+│              ViewModel Layer                 │
+│             WeatherViewModel                 │
+│    (状态管理、业务逻辑编排、协程调度)         │
+└──────────────────┬──────────────────────────┘
+                   │ WeatherRepository 接口
+                   ▼
+┌─────────────────────────────────────────────┐
+│               Data Layer                     │
+│  MockWeatherRepository / OpenWeatherRepository│
+│     (数据获取、解析、异常封装为 Result)       │
+└─────────────────────────────────────────────┘
+```
+
+**数据流方向：** 单向数据流
+- Repository → ViewModel（`Result<WeatherSnapshot>`）
+- ViewModel → UI（`StateFlow<WeatherUiState>`）
+- UI → ViewModel（事件回调：`onRefresh` 等）
+
+详细架构说明请参考 [DEVELOPMENT.md](./DEVELOPMENT.md)。
+
+---
+
+## 核心特性
+
+- ⌚ **Wear OS 原生体验**：基于 Wear Compose Material，适配圆形表盘
+- 🌀 **表圈交互**：旋转表圈控制逐时预报列表滚动（snap 行为）
+- 🎨 **Canvas 矢量图标**：纯绘制天气图标，无字体依赖，性能更好
+- ⚡ **Compose Strong Skipping**：Kotlin 2.0 编译器默认开启，跳过稳定参数的重组
+- 📊 **单一状态流**：合并加载状态与数据，减少重组次数
+- 🔄 **增量刷新**：已有数据时刷新不闪回 Loading 态
+- 🧪 **完善测试**：数据层、ViewModel、UI 组件均有单元测试
+- 🚀 **Baseline Profile**：预编译热路径，提升首帧与滚动流畅度
+
+---
+
 ## 性能优化（P0，已完成）
 
 - 数据模型加 `@Immutable`，Compose 编译器可跳过未变化子树的重组
@@ -40,6 +169,8 @@
 - 天气图标由 emoji 改为 Canvas 矢量绘制，消除手表字体回退扫描卡顿
 - 开启 Compose strong skipping（`composeCompiler.enableStrongSkipping`）
 - 集成 Baseline Profile（profileinstaller + `:baselineprofile` 生成模块）
+
+---
 
 ## 生成 Baseline Profile（可选，建议做一次）
 
@@ -52,60 +183,57 @@
 生成一次后重新 Build APK 并安装，首次启动时 profileinstaller 会预编译热路径，
 进一步提升首帧与滚动流畅度；未生成时不影响功能，只是暂不享受基线优化。
 
-## 项目结构
+---
 
+## 测试
+
+运行单元测试：
+
+```bash
+./gradlew :app:testDebugUnitTest
 ```
-app/
-├── build.gradle.kts                  # 模块依赖与编译配置
-├── proguard-rules.pro
-└── src/
-    ├── main/
-    │   ├── AndroidManifest.xml       # 权限、MainActivity、Wear OS 声明
-    │   ├── kotlin/com/galaxy/weatherwatch/
-    │   │   ├── WeatherApplication.kt
-    │   │   ├── MainActivity.kt
-    │   │   ├── data/
-    │   │   │   ├── model/
-    │   │   │   │   ├── Weather.kt           # 数据模型
-    │   │   │   │   └── WeatherIcon.kt       # OWM 图标枚举
-    │   │   │   ├── WeatherRepository.kt     # 仓库接口
-    │   │   │   ├── MockWeatherRepository.kt # 本地假数据（当前使用）
-    │   │   │   └── OpenWeatherRepository.kt # One Call API 3.0 实现
-    │   │   └── ui/
-    │   │       ├── WeatherAppScreen.kt      # 顶层路由
-    │   │       ├── WeatherViewModel.kt      # 状态管理
-    │   │       ├── theme/Theme.kt
-    │   │       ├── components/WeatherIcon.kt
-    │   │       └── screens/
-    │   │           ├── HomeScreen.kt         # 实时天气+今日摘要+逐时
-    │   │           ├── LoadingScreen.kt
-    │   │           └── ErrorScreen.kt
-    │   └── res/
-    │       ├── values/{strings,colors,themes}.xml
-    │       ├── drawable/ic_launcher_foreground.xml
-    │       └── mipmap-anydpi-v26/ic_launcher{,_round}.xml
-    └── test/kotlin/com/galaxy/weatherwatch/
-        ├── data/MockWeatherRepositoryTest.kt
-        ├── data/model/WeatherIconTest.kt
-        ├── ui/WeatherViewModelTest.kt
-        └── ui/components/WeatherIconGlyphTest.kt
-```
+
+测试覆盖范围：
+- **数据层**：Repository 实现、数据模型、异常处理
+- **ViewModel 层**：状态流转、刷新逻辑、错误处理
+- **UI 层**：组件绘制逻辑（如 WeatherIcon）、主题
+
+测试工具栈：JUnit4 + MockK + Turbine + Coroutines Test
+
+---
+
+## 数据源
+
+OpenWeatherMap One Call API 3.0（暂未接入 Key，当前用 Mock 数据）。
+
+- 接口文档：https://openweathermap.org/api/one-call-3
+- 实现类：`OpenWeatherRepository`
+- 当前默认：`MockWeatherRepository`（本地假数据，便于 UI 调试）
+
+> 接入真实 API 后，在 `WeatherViewModel` 构造函数中切换 Repository 实现即可。
+
+---
 
 ## 里程碑进度
 
-- [x] M1 项目骨架（本提交）
+- [x] M1 项目骨架
+- [x] M1.5 性能优化基线（Immutable / Strong Skipping / Baseline Profile）
 - [ ] M2 GPS 定位与权限
 - [ ] M3 实时天气主屏（接入 OWM API）
 - [ ] M4 表圈逐时预报校准
 - [ ] M5 手动刷新 + 错误处理
 - [ ] M6 真机验收
 
-## 测试
+---
 
-```bash
-./gradlew :app:testDebugUnitTest
-```
+## 开发文档
 
-## 数据源
+更详细的开发指南请参考：
 
-OpenWeatherMap One Call API 3.0（暂未接入 Key，当前用 Mock 数据）。
+| 文档 | 说明 |
+|------|------|
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | 架构设计、模块详解、编码规范、构建发布 |
+| [AGENTS.md](./AGENTS.md) | AI 协作规范、文档更新要求、提交规范（AI 必读） |
+
+> ⚠️ **AI 开发者注意**：每次新增或修改功能后，必须同步更新相关文档。
+> 具体规则请阅读 [AGENTS.md](./AGENTS.md)。

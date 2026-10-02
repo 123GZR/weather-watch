@@ -1,0 +1,670 @@
+# 开发文档
+
+本文档详细描述 WeatherWatch 项目的架构设计、模块划分、数据流、编码规范等，供开发者在进行功能开发或修改时参考。
+
+> 本文档是 AI 开发者的**必读文档**。开始任何编码工作前，请先阅读本文档。
+
+---
+
+## 目录
+
+- [1. 架构设计](#1-架构设计)
+  - [1.1 总体架构](#11-总体架构)
+  - [1.2 分层原则](#12-分层原则)
+  - [1.3 单向数据流](#13-单向数据流)
+- [2. 数据层详解](#2-数据层详解)
+  - [2.1 WeatherRepository 接口](#21-weatherrepository-接口)
+  - [2.2 MockWeatherRepository](#22-mockweatherrepository)
+  - [2.3 OpenWeatherRepository](#23-openweatherrepository)
+  - [2.4 数据模型](#24-数据模型)
+  - [2.5 异常体系](#25-异常体系)
+- [3. ViewModel 层详解](#3-viewmodel-层详解)
+  - [3.1 WeatherViewModel](#31-weatherviewmodel)
+  - [3.2 WeatherUiState](#32-weatheruistate)
+  - [3.3 状态流转](#33-状态流转)
+- [4. UI 层详解](#4-ui-层详解)
+  - [4.1 WeatherAppScreen（顶层路由）](#41-weatherappscreen顶层路由)
+  - [4.2 HomeScreen（主屏）](#42-homescreen主屏)
+  - [4.3 LoadingScreen / ErrorScreen](#43-loadingscreen--errorscreen)
+  - [4.4 WeatherIcon 组件](#44-weathericon-组件)
+  - [4.5 主题系统](#45-主题系统)
+- [5. 性能优化指南](#5-性能优化指南)
+  - [5.1 Compose 重组优化](#51-compose-重组优化)
+  - [5.2 列表性能](#52-列表性能)
+  - [5.3 Baseline Profile](#53-baseline-profile)
+- [6. 测试指南](#6-测试指南)
+  - [6.1 测试结构](#61-测试结构)
+  - [6.2 测试工具](#62-测试工具)
+  - [6.3 编写测试的原则](#63-编写测试的原则)
+- [7. 构建与发布](#7-构建与发布)
+  - [7.1 构建类型](#71-构建类型)
+  - [7.2 版本管理](#72-版本管理)
+  - [7.3 混淆规则](#73-混淆规则)
+- [8. 编码规范](#8-编码规范)
+  - [8.1 Kotlin 风格](#81-kotlin-风格)
+  - [8.2 Compose 约定](#82-compose-约定)
+  - [8.3 命名规范](#83-命名规范)
+- [9. 依赖管理](#9-依赖管理)
+- [10. 常见问题](#10-常见问题)
+
+---
+
+## 1. 架构设计
+
+### 1.1 总体架构
+
+项目采用 **MVVM (Model-View-ViewModel) + Repository** 架构，分为三层：
+
+```
+┌───────────────────────────────────────────────────────┐
+│                     UI Layer                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐ │
+│  │ HomeScreen   │  │ LoadingScreen│  │ ErrorScreen │ │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬──────┘ │
+│         │                 │                  │        │
+│         └─────────────────┼──────────────────┘        │
+│                           │                           │
+│                  WeatherAppScreen                     │
+│              (状态分发 / 顶层路由)                     │
+└───────────────────┬───────────────────────────────────┘
+                    │ StateFlow<WeatherUiState>
+                    ▼
+┌───────────────────────────────────────────────────────┐
+│                  ViewModel Layer                       │
+│              ┌──────────────────────┐                  │
+│              │   WeatherViewModel   │                  │
+│              │  - 状态管理           │                  │
+│              │  - 业务逻辑编排       │                  │
+│              │  - 协程生命周期管理   │                  │
+│              └──────────┬───────────┘                  │
+└──────────────────┬──────┴──────────────────────────────┘
+                   │ WeatherRepository 接口
+                   ▼
+┌───────────────────────────────────────────────────────┐
+│                    Data Layer                          │
+│  ┌──────────────────────┐  ┌──────────────────────┐  │
+│  │ MockWeatherRepository│  │ OpenWeatherRepository │  │
+│  │ (本地假数据)          │  │ (OWM API)            │  │
+│  └──────────┬───────────┘  └──────────┬───────────┘  │
+│             │                         │               │
+│             └───────────┬─────────────┘               │
+│                         │                             │
+│                   WeatherRepository                    │
+│                    (接口契约)                          │
+└───────────────────────────────────────────────────────┘
+```
+
+### 1.2 分层原则
+
+| 层级 | 职责 | 依赖方向 | 可依赖的内容 |
+|------|------|---------|-------------|
+| UI 层 | 渲染界面、处理用户交互 | 向下依赖 ViewModel | ViewModel、UiState、Compose 框架 |
+| ViewModel 层 | 状态管理、业务逻辑编排、协程调度 | 向下依赖 Repository 接口 | Repository 接口、数据模型、协程 |
+| Data 层 | 数据获取、解析、持久化、异常封装 | 向上实现 Repository 接口 | 网络库、序列化、数据模型 |
+
+**关键原则：**
+- 上层依赖下层的**抽象**（接口），而非具体实现
+- 数据层的具体实现对 ViewModel 透明，切换数据源只需修改注入
+- ViewModel 不持有任何 UI 相关引用（Context、View 等）
+
+### 1.3 单向数据流
+
+项目遵循**单向数据流**（Unidirectional Data Flow）模式：
+
+```
+  用户事件 (onClick / onRefresh)
+         │
+         ▼
+┌─────────────────┐
+│  WeatherViewModel │ ← 处理事件，更新状态
+└────────┬────────┘
+         │
+         ▼
+  StateFlow<WeatherUiState>
+         │
+         ▼
+┌─────────────────┐
+│   UI (Compose)  │ ← 收集状态，重组渲染
+└─────────────────┘
+         │
+         ▼
+  用户看到新界面
+```
+
+**为什么用单向数据流：**
+- 状态唯一来源（Single Source of Truth），避免状态不一致
+- 可预测性：相同输入必然产生相同输出
+- 便于测试：ViewModel 的状态流转可独立测试
+- 调试方便：通过状态日志即可追踪问题
+
+---
+
+## 2. 数据层详解
+
+### 2.1 WeatherRepository 接口
+
+**文件：** `data/WeatherRepository.kt`
+
+```kotlin
+interface WeatherRepository {
+    suspend fun fetchWeather(lat: Double, lon: Double): Result<WeatherSnapshot>
+}
+```
+
+**设计要点：**
+- 使用 `suspend` 函数，调用方在协程中调用
+- 返回 `Result<T>`，成功/失败统一封装，不直接抛异常
+- 接口参数为经纬度，不关心具体定位实现（遵循单一职责）
+
+### 2.2 MockWeatherRepository
+
+**文件：** `data/MockWeatherRepository.kt`
+
+本地假数据实现，用于：
+- UI 开发与调试（无需网络）
+- 单元测试（可控制失败模式）
+- 演示与原型验证
+
+**核心能力：**
+- `simulateDelayMs`：模拟网络延迟
+- `FailureMode`：可配置的失败模式（NONE / NETWORK / TIMEOUT / API / GPS）
+- 生成 12 小时逐时预报数据
+- 每次刷新时间戳递增
+
+### 2.3 OpenWeatherRepository
+
+**文件：** `data/OpenWeatherRepository.kt`
+
+OpenWeatherMap One Call API 3.0 的实现。
+
+**技术栈：**
+- 网络请求：OkHttp
+- JSON 解析：kotlinx.serialization
+- 超时控制：`withTimeout(15.seconds)`
+- 线程调度：`withContext(Dispatchers.IO)`
+
+**内部数据模型：**
+- `OpenWeatherResponse`：API 原始响应结构
+- `OwmCurrent` / `OwmHourly` / `OwmDaily` / `OwmWeather`：各字段映射
+- 通过 `toSnapshot()` 方法转换为业务模型 `WeatherSnapshot`
+
+**待实现：**
+- API Key 注入（当前需手动传入）
+- 里程碑 M3 完成后启用
+
+### 2.4 数据模型
+
+**文件：** `data/model/Weather.kt`
+
+所有数据类均添加 `@Immutable` 注解，确保 Compose 编译器识别为稳定类型。
+
+#### WeatherSnapshot
+
+天气数据的顶层容器，一次获取包含三部分：
+
+```kotlin
+data class WeatherSnapshot(
+    val current: CurrentWeather,   // 实时天气
+    val today: DailySummary,       // 今日摘要
+    val hourly: List<HourlyForecast> // 逐时预报（12小时）
+)
+```
+
+#### CurrentWeather
+
+当前天气详情：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| temp | Double | 当前温度（摄氏度） |
+| feelsLike | Double | 体感温度（摄氏度） |
+| icon | WeatherIcon | 天气图标枚举 |
+| description | String | 天气描述文本 |
+| updatedAt | Long | 更新时间戳（毫秒） |
+
+#### HourlyForecast
+
+逐时预报：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| epochSecond | Long | 时间戳（秒级） |
+| temp | Double | 温度（摄氏度） |
+| icon | WeatherIcon | 天气图标枚举 |
+| precipProbability | Double | 降水概率（0.0 ~ 1.0） |
+
+#### DailySummary
+
+今日摘要：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| minTemp | Double | 最低温度 |
+| maxTemp | Double | 最高温度 |
+| precipProbability | Double | 降水概率 |
+
+#### WeatherIcon
+
+**文件：** `data/model/WeatherIcon.kt`
+
+OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
+
+| 枚举值 | OWM Code | 说明 |
+|--------|----------|------|
+| CLEAR_DAY / CLEAR_NIGHT | 01d / 01n | 晴 |
+| FEW_CLOUDS_DAY / FEW_CLOUDS_NIGHT | 02d / 02n | 少云 |
+| SCATTERED_CLOUDS_DAY / SCATTERED_CLOUDS_NIGHT | 03d / 03n | 多云 |
+| BROKEN_CLOUDS_DAY / BROKEN_CLOUDS_NIGHT | 04d / 04n | 阴天 |
+| SHOWER_RAIN_DAY / SHOWER_RAIN_NIGHT | 09d / 09n | 阵雨 |
+| RAIN_DAY / RAIN_NIGHT | 10d / 10n | 雨 |
+| THUNDERSTORM_DAY / THUNDERSTORM_NIGHT | 11d / 11n | 雷暴 |
+| SNOW_DAY / SNOW_NIGHT | 13d / 13n | 雪 |
+| MIST_DAY / MIST_NIGHT | 50d / 50n | 雾 |
+
+`fromCode(code: String?)` 方法用于从 OWM 返回的图标代码反查枚举，默认返回 `CLEAR_DAY`。
+
+### 2.5 异常体系
+
+所有自定义异常定义在 `MockWeatherRepository.kt` 文件底部：
+
+| 异常类 | 触发场景 | UI 展示 |
+|--------|---------|---------|
+| NoNetworkException | 无网络连接 | 请检查网络连接 |
+| TimeoutException | 请求超时 | 网络请求超时，请重试 |
+| ApiException | 服务端错误（非 200） | 天气服务暂不可用 |
+| GpsUnavailableException | 无法获取位置 | 无法获取位置信息 |
+
+异常在 ViewModel 层通过 `toErrorType()` 转换为 `WeatherUiState.ErrorType` 枚举，UI 层不直接处理异常类。
+
+---
+
+## 3. ViewModel 层详解
+
+### 3.1 WeatherViewModel
+
+**文件：** `ui/WeatherViewModel.kt`
+
+**职责：**
+- 管理 UI 状态（`WeatherUiState`）
+- 协调数据获取（调用 Repository）
+- 处理刷新逻辑（防重复、状态合并）
+- 异常转换（Throwable → ErrorType）
+
+**关键属性：**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| uiState | `StateFlow<WeatherUiState>` | UI 状态流（只读对外暴露） |
+| _uiState | `MutableStateFlow<WeatherUiState>` | 内部可变状态流 |
+| refreshJob | `Job?` | 当前刷新任务，用于防重复刷新 |
+| repository | `WeatherRepository` | 数据源（构造注入，默认 Mock） |
+
+**关键方法：**
+
+- `refresh()`：发起刷新
+  - 已有任务进行中则直接返回（防抖）
+  - 已有数据时保留旧快照、只翻转 `isRefreshing` 标记
+  - 无数据时进入 Loading 状态
+  - 通过 `viewModelScope` 启动协程，ViewModel 销毁时自动取消
+
+**注入方式：**
+- 构造函数参数注入，默认使用 `MockWeatherRepository()`
+- 未来接入 DI 框架（如 Hilt）后可改为自动注入
+- 测试时可传入 Mock/Fake 实现
+
+### 3.2 WeatherUiState
+
+**文件：** `ui/WeatherViewModel.kt`（定义在文件底部）
+
+UI 状态的密封接口，三种状态：
+
+```kotlin
+sealed interface WeatherUiState {
+    data object Loading : WeatherUiState
+    data class Success(val snapshot: WeatherSnapshot, val isRefreshing: Boolean = false) : WeatherUiState
+    data class Error(val type: ErrorType, val isRefreshing: Boolean = false) : WeatherUiState
+}
+```
+
+**设计要点：**
+- 使用 `sealed interface` 确保状态穷尽，`when` 表达式无需 `else`
+- `Success` 和 `Error` 状态携带 `isRefreshing` 字段
+  - 支持「已有数据 + 正在刷新」的中间状态
+  - 避免刷新时整屏闪回 Loading，提升体验
+- `ErrorType` 枚举区分错误类型，UI 根据类型展示不同文案
+
+**ErrorType 枚举：**
+
+| 值 | 场景 |
+|----|------|
+| PERMISSION_DENIED | 定位权限被拒绝 |
+| NO_NETWORK | 无网络连接 |
+| TIMEOUT | 请求超时 |
+| API_ERROR | API 服务错误 |
+| GPS_UNAVAILABLE | GPS 不可用 |
+
+### 3.3 状态流转
+
+```
+       ┌─────────────┐
+       │   Loading   │  ← 初始状态 / 首次加载
+       └──────┬──────┘
+              │
+     ┌────────┴────────┐
+     ▼                 ▼
+┌─────────┐       ┌─────────┐
+│ Success │       │  Error  │
+└────┬────┘       └────┬────┘
+     │  刷新            │  重试
+     ▼                  ▼
+┌─────────────┐  ┌─────────────┐
+│ Success +   │  │ Error +     │
+│ isRefreshing│  │ isRefreshing│
+└──────┬──────┘  └──────┬──────┘
+       │                │
+       └───────┬────────┘
+               ▼
+         成功/失败 → 回到 Success 或 Error
+```
+
+---
+
+## 4. UI 层详解
+
+### 4.1 WeatherAppScreen（顶层路由）
+
+**文件：** `ui/WeatherAppScreen.kt`
+
+应用的顶层 Composable，负责状态分发与页面路由：
+
+```kotlin
+@Composable
+fun WeatherAppScreen(viewModel: WeatherViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val onRefresh = remember(viewModel) { { viewModel.refresh() } }
+
+    Box(...) {
+        when (val s = state) {
+            is WeatherUiState.Loading -> LoadingScreen()
+            is WeatherUiState.Success -> HomeScreen(...)
+            is WeatherUiState.Error -> ErrorScreen(...)
+        }
+    }
+}
+```
+
+**性能要点：**
+- `onRefresh` 使用 `remember(viewModel)` 包裹，避免每次重组产生新 lambda
+- `when` 表达式对 `sealed interface` 穷尽检查，无需 `else` 分支
+
+### 4.2 HomeScreen（主屏）
+
+**文件：** `ui/screens/HomeScreen.kt`
+
+应用主界面，包含三部分：
+1. **当前天气头部**：图标 + 温度 + 体感 + 描述
+2. **今日摘要卡片**：最高/最低温、降水概率
+3. **逐时预报列表**：可滚动的 12 小时预报
+
+**列表实现：** `ScalingLazyColumn`（Wear OS 专用的可缩放懒加载列表）
+
+**表圈交互：**
+```kotlin
+rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState = listState)
+```
+- 绑定旋转表圈输入，旋转表圈可滚动列表
+- 使用 snap 行为，每次旋转对齐到 item 边界
+
+**性能优化：**
+- 每个 item 都有稳定 `key`（如 `"hourly-${forecast.epochSecond}"`）
+- 刷新时 Compose 可复用对应 item 的 Composable 实例，只重组数据变化的行
+
+**组件拆分：**
+- `CurrentWeatherHeader`：当前天气头部
+- `TodaySummaryRow`：今日摘要卡片
+- `HourlyForecastRow`：逐时预报单行
+- `RefreshFooter`：刷新按钮 + 更新时间
+- `SummaryCell`：摘要单元格
+
+### 4.3 LoadingScreen / ErrorScreen
+
+**文件：** `ui/screens/LoadingScreen.kt`、`ui/screens/ErrorScreen.kt`
+
+- **LoadingScreen**：居中显示圆形进度条
+- **ErrorScreen**：根据 `ErrorType` 展示不同错误信息 + 重试按钮
+
+### 4.4 WeatherIcon 组件
+
+**文件：** `ui/components/WeatherIcon.kt`
+
+Canvas 矢量绘制的天气图标组件。
+
+**为什么不用 emoji：**
+- 手表系统字体回退扫描会导致卡顿
+- emoji 在不同设备上渲染不一致
+- Canvas 绘制性能更好，可控性更强
+
+**支持的图标类型：** 与 `WeatherIcon` 枚举一一对应（18 种）
+
+**绘制方式：** 使用 `androidx.compose.ui.graphics.Canvas` 绘制矢量图形
+
+### 4.5 主题系统
+
+**文件：** `ui/theme/Theme.kt`
+
+基于 Wear Compose Material 的主题配置。
+
+**主题组成：**
+- 颜色：深色主题为主（适配手表 AMOLED 屏幕）
+- 排版：Material 3 typography
+- 形状：圆角风格
+
+---
+
+## 5. 性能优化指南
+
+手表端性能敏感，所有 UI 改动都应考虑性能影响。
+
+### 5.1 Compose 重组优化
+
+**已实施的优化：**
+
+| 优化手段 | 说明 | 位置 |
+|---------|------|------|
+| `@Immutable` 数据类 | Compose 编译器识别为稳定类型，内容未变则跳过重组 | Weather.kt |
+| Strong Skipping | Kotlin 2.0 Compose 编译器默认开启，稳定参数的 Composable 可跳过重组 | build.gradle.kts |
+| 稳定 lambda | `remember` 包裹回调，避免每次重组产生新实例 | WeatherAppScreen.kt |
+| 单一状态流 | 合并 `uiState` 与 `isRefreshing`，一次刷新只触发一轮重组 | WeatherViewModel.kt |
+
+**开发时注意：**
+- 新增数据类必须加 `@Immutable`
+- Composable 函数的参数应尽量使用稳定类型
+- 不要在 Composable 中直接创建对象（用 `remember` 包裹）
+- lambda 回调如果传给子组件，用 `remember` 包裹
+
+### 5.2 列表性能
+
+**已实施的优化：**
+
+| 优化手段 | 说明 |
+|---------|------|
+| `ScalingLazyColumn` | Wear OS 懒加载列表，只渲染可见区域 |
+| 稳定 `key` | 每个 item 有唯一 key，刷新时 Compose 可复用实例 |
+| `@Immutable` 列表项数据 | 数据未变时跳过对应 item 的重组 |
+
+**开发时注意：**
+- 列表 item 的 key 必须稳定且唯一
+- 不要在 item 的 Composable 中做耗时计算
+- 列表数据类必须是 `@Immutable`
+
+### 5.3 Baseline Profile
+
+**作用：** 预编译应用热路径，提升首次启动和滚动流畅度
+
+**生成模块：** `:baselineprofile`
+**集成方式：** `androidx.profileinstaller`
+**生成命令：** `./gradlew :baselineprofile:generateBaselineProfile`
+
+**注意：**
+- 生成需要连接手表（或模拟器）并开启 ADB
+- 生成一次即可，重新 Build APK 会自动打包
+- 未生成不影响功能，只是没有基线优化
+
+---
+
+## 6. 测试指南
+
+### 6.1 测试结构
+
+```
+test/kotlin/com/galaxy/weatherwatch/
+├── util/
+│   └── MainDispatcherRule.kt    # 协程测试调度器规则（必须）
+├── data/
+│   ├── MockWeatherRepositoryTest.kt
+│   └── OpenWeatherRepositoryTest.kt
+├── data/model/
+│   └── WeatherIconTest.kt
+└── ui/
+    ├── WeatherViewModelTest.kt
+    ├── components/
+    │   └── WeatherIconGlyphTest.kt
+    └── theme/
+        └── ThemeTest.kt
+```
+
+### 6.2 测试工具
+
+| 工具 | 用途 | 依赖 |
+|------|------|------|
+| JUnit4 | 测试框架 | junit |
+| MockK | Mock 框架 | mockk |
+| Turbine | Flow 测试 | turbine |
+| kotlinx-coroutines-test | 协程测试 | kotlinx-coroutines-test |
+
+### 6.3 编写测试的原则
+
+1. **数据层必须测试**：Repository 的成功/失败路径、数据转换、异常映射
+2. **ViewModel 必须测试**：状态流转、刷新逻辑、错误处理、防抖
+3. **有计算逻辑的 UI 组件要测试**：如图标绘制、时间格式化
+4. **测试应独立**：每个测试方法不依赖其他测试的状态
+5. **使用 TestDispatcher**：协程测试必须使用 `TestDispatcher` 和 `MainDispatcherRule`
+
+**运行测试：**
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+---
+
+## 7. 构建与发布
+
+### 7.1 构建类型
+
+| 类型 | 混淆 | 资源压缩 | 用途 |
+|------|------|---------|------|
+| debug | 关闭 | 关闭 | 日常开发调试 |
+| release | 开启 | 开启 | 正式发布 |
+
+### 7.2 版本管理
+
+- `versionCode`：整数，每次发布递增
+- `versionName`：语义化版本号（如 "1.0"）
+- 配置位置：`app/build.gradle.kts` → `defaultConfig`
+
+### 7.3 混淆规则
+
+- 配置文件：`app/proguard-rules.pro`
+- 默认使用 Android 优化混淆规则
+- 数据类使用 `@Serializable`，序列化字段需确保不被混淆（kotlinx-serialization 自动处理）
+
+---
+
+## 8. 编码规范
+
+### 8.1 Kotlin 风格
+
+- 遵循官方 [Kotlin 编码规范](https://kotlinlang.org/docs/coding-conventions.html)
+- 使用表达式函数体（当函数体只有一个表达式时）
+- 优先使用 `val` 而非 `var`
+- 优先使用不可变集合（`List` / `Map` 而非 `MutableList` / `MutableMap`）
+- 使用 `Result<T>` 处理可恢复错误，不滥用异常
+
+### 8.2 Compose 约定
+
+- Composable 函数首字母大写
+- Modifier 参数放在第一个可选参数位置（紧跟必需参数之后）
+- 有状态的 Composable 应提供「无状态版本 + 有状态版本」
+- 事件回调参数命名为 `onXxx`（如 `onRefresh`、`onRetry`）
+- 列表 item 必须提供 `key`
+
+### 8.3 命名规范
+
+| 类型 | 规则 | 示例 |
+|------|------|------|
+| 包名 | 全小写，点分隔 | `com.galaxy.weatherwatch.data` |
+| 类/接口 | 大驼峰 | `WeatherViewModel`、`WeatherRepository` |
+| 函数 | 小驼峰 | `fetchWeather()`、`toSnapshot()` |
+| 变量/属性 | 小驼峰 | `uiState`、`isRefreshing` |
+| 常量 | 全大写下划线分隔 | `MAX_RETRY_COUNT` |
+| 枚举值 | 全大写下划线分隔 | `CLEAR_DAY` |
+| Composable | 大驼峰 | `HomeScreen`、`WeatherIcon` |
+| ViewModel | 以 `ViewModel` 结尾 | `WeatherViewModel` |
+| UI 状态 | 以 `UiState` 结尾 | `WeatherUiState` |
+| 屏幕级 Composable | 以 `Screen` 结尾 | `HomeScreen` |
+| Repository 实现 | 前缀 + Repository | `MockWeatherRepository` |
+
+---
+
+## 9. 依赖管理
+
+所有依赖版本统一在 `gradle/libs.versions.toml` 中管理。
+
+**结构：**
+- `[versions]`：版本号定义
+- `[libraries]`：库依赖定义
+- `[plugins]`：插件定义
+
+**升级依赖：**
+1. 修改 `libs.versions.toml` 中的版本号
+2. 同步 Gradle
+3. 运行测试确保无问题
+4. 更新 README.md 中的环境要求表格
+
+---
+
+## 10. 常见问题
+
+### Q: 如何切换到真实天气 API？
+
+在 `WeatherViewModel` 构造函数中，将默认的 `MockWeatherRepository()` 替换为 `OpenWeatherRepository(apiKey = "你的key")`。
+未来可通过 DI 框架（如 Hilt）统一管理。
+
+### Q: 如何添加新的天气状态？
+
+1. 在 `WeatherIcon` 枚举中添加新值
+2. 在 `WeatherIcon` Composable 中添加对应绘制逻辑
+3. 更新 `WeatherIconTest` 测试
+4. 更新本文档的数据模型章节
+
+### Q: 如何添加新的错误类型？
+
+1. 在数据层添加对应的异常类
+2. 在 `WeatherUiState.ErrorType` 中添加枚举值
+3. 在 `toErrorType()` 扩展函数中添加映射
+4. 在 `ErrorScreen` 中添加对应文案
+5. 更新 ViewModel 测试
+6. 更新本文档
+
+### Q: 为什么用 Result 而不是直接抛异常？
+
+- 调用方必须处理错误（`fold` / `getOrNull` / `getOrElse`）
+- 异常信息不会泄漏到 UI 层
+- 便于测试错误路径
+- 符合函数式编程风格
+
+### Q: 为什么用 sealed interface 而不是 sealed class？
+
+- `sealed interface` 更轻量，无构造函数开销
+- 状态实现类可以是 `data object`（单例）或 `data class`
+- 语义上，状态是「行为接口」而非「抽象类」
