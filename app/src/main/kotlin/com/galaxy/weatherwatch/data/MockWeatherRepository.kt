@@ -47,7 +47,12 @@ class MockWeatherRepository(
                 precipProbability = if (hoursAhead in 4..7) 0.4 else 0.0
             )
         }
-        return WeatherSnapshot(current = current, today = today, hourly = hourly)
+        return WeatherSnapshot(
+            locationName = "北京市 朝阳区",
+            current = current,
+            today = today,
+            hourly = hourly
+        )
     }
 
     private fun pickIcon(hour: Int): WeatherIcon =

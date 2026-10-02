@@ -11,6 +11,7 @@ import kotlinx.serialization.Serializable
 @Immutable
 @Serializable
 data class WeatherSnapshot(
+    val locationName: String = "",
     val current: CurrentWeather,
     val today: DailySummary,
     val hourly: List<HourlyForecast>

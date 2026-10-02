@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
@@ -30,6 +31,7 @@ import com.galaxy.weatherwatch.data.model.CurrentWeather
 import com.galaxy.weatherwatch.data.model.DailySummary
 import com.galaxy.weatherwatch.data.model.HourlyForecast
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
+import com.galaxy.weatherwatch.ui.components.LocationPinIcon
 import com.galaxy.weatherwatch.ui.components.WeatherIcon
 import java.time.Instant
 import java.time.ZoneId
@@ -48,7 +50,8 @@ fun HomeScreen(
         ScalingLazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
+            // 顶部额外留出空间给固定位置条
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 56.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             // 旋转表圈输入：ScalingLazyColumn 内部会用 rememberActiveFocusRequester()
             // 绑定 focusRequester，这里只需提供 snap 行为。
@@ -76,7 +79,37 @@ fun HomeScreen(
                 )
             }
         }
+
+        // 顶部固定位置条
+        LocationBar(
+            locationName = snapshot.locationName,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 32.dp)
+        )
+
         PositionIndicator(scalingLazyListState = listState)
+    }
+}
+
+@Composable
+private fun LocationBar(
+    locationName: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LocationPinIcon(sizeDp = 14)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = locationName,
+            style = MaterialTheme.typography.caption2,
+            color = MaterialTheme.colors.onSurfaceVariant,
+            letterSpacing = 0.6.sp
+        )
     }
 }
 
