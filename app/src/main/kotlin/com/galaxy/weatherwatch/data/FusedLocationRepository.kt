@@ -10,49 +10,71 @@ import kotlinx.coroutines.tasks.await
 /**
  * 基于 Google Play Services FusedLocationProviderClient 的定位实现。
  *
- * 策略：
- * 1. 优先使用 getCurrentLocation() 主动请求一次新鲜定位
- *    - 内部会主动打开 GPS/网络定位获取当前位置
- *    - Wear OS 上 lastLocation 经常为 null，因此优先主动请求
- * 2. 失败或超时时回退到 lastLocation（缓存位置）
- * 3. 都失败则返回 LocationUnavailableException
+ * 多级降级策略（适配 Wear OS / 三星 Galaxy Watch 4C）：
+ * 1. 快速定位（网络/蓝牙/Wi-Fi）— 5 秒超时，室内可用
+ * 2. 高精度定位（GPS） — 20 秒超时，户外精准
+ * 3. 回退 lastLocation 缓存 — 立即返回
+ * 4. 全部失败 → LocationUnavailableException
+ *
+ * 为什么这样设计：
+ * - Wear OS 手表 GPS 冷启动通常需要 10-30 秒（需搜星）
+ * - 室内环境 GPS 无法定位，但网络定位可用
+ * - 先快速定位让用户尽快看到结果，再异步尝试高精度（本实现用串行降级）
  */
 class FusedLocationRepository(
     private val fusedLocationClient: FusedLocationProviderClient
 ) : LocationRepository {
 
     override suspend fun getCurrentLocation(): Result<LocationResult> = try {
-        // 第一步：主动请求一次新鲜定位（CurrentLocationRequest 自带超时）
-        val freshLocation = try {
-            val request = CurrentLocationRequest.Builder()
-                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-                .setDurationMillis(LOCATION_TIMEOUT_MS)
-                .setMaxUpdateAgeMillis(0)
-                .build()
-            fusedLocationClient.getCurrentLocation(request, null).await()
-        } catch (_: Exception) {
-            null
-        }
-
-        if (freshLocation != null) {
-            Result.success(freshLocation.toResult())
+        // 第一级：快速定位（平衡精度，网络/蓝牙/Wi-Fi）
+        val quickLocation = tryGetCurrentLocation(
+            priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            timeoutMs = QUICK_LOCATION_TIMEOUT_MS
+        )
+        if (quickLocation != null) {
+            Result.success(quickLocation.toResult())
         } else {
-            // 第二步：回退到 lastLocation
-            val lastLocation = try {
-                fusedLocationClient.lastLocation.await()
-            } catch (_: Exception) {
-                null
-            }
-            if (lastLocation != null) {
-                Result.success(lastLocation.toResult())
+            // 第二级：高精度定位（GPS）
+            val highAccuracyLocation = tryGetCurrentLocation(
+                priority = Priority.PRIORITY_HIGH_ACCURACY,
+                timeoutMs = HIGH_ACCURACY_TIMEOUT_MS
+            )
+            if (highAccuracyLocation != null) {
+                Result.success(highAccuracyLocation.toResult())
             } else {
-                Result.failure(LocationUnavailableException())
+                // 第三级：回退 lastLocation 缓存
+                val lastLocation = try {
+                    fusedLocationClient.lastLocation.await()
+                } catch (_: Exception) {
+                    null
+                }
+                if (lastLocation != null) {
+                    Result.success(lastLocation.toResult())
+                } else {
+                    Result.failure(LocationUnavailableException())
+                }
             }
         }
     } catch (_: SecurityException) {
         Result.failure(LocationPermissionDeniedException())
     } catch (_: Exception) {
         Result.failure(LocationUnavailableException())
+    }
+
+    /**
+     * 尝试一次 getCurrentLocation 调用，失败或超时返回 null。
+     */
+    private suspend fun tryGetCurrentLocation(
+        priority: Int,
+        timeoutMs: Long
+    ): Location? = try {
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(priority)
+            .setDurationMillis(timeoutMs)
+            .build()
+        fusedLocationClient.getCurrentLocation(request, null).await()
+    } catch (_: Exception) {
+        null
     }
 
     private fun Location.toResult(): LocationResult = LocationResult(
@@ -63,7 +85,8 @@ class FusedLocationRepository(
     )
 
     companion object {
-        private const val LOCATION_TIMEOUT_MS = 10_000L
+        private const val QUICK_LOCATION_TIMEOUT_MS = 5_000L
+        private const val HIGH_ACCURACY_TIMEOUT_MS = 20_000L
     }
 }
 
