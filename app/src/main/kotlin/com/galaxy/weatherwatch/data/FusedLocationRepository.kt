@@ -2,84 +2,58 @@ package com.galaxy.weatherwatch.data
 
 import android.location.Location
 import com.galaxy.weatherwatch.data.model.LocationResult
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.Priority
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.resume
 
 /**
  * 基于 Google Play Services FusedLocationProviderClient 的定位实现。
- * 优先获取 lastLocation，若为空则主动请求一次单次定位更新。
+ *
+ * 策略：
+ * 1. 优先使用 getCurrentLocation() 主动请求一次新鲜定位
+ *    - 内部会主动打开 GPS/网络定位获取当前位置
+ *    - Wear OS 上 lastLocation 经常为 null，因此优先主动请求
+ * 2. 失败或超时时回退到 lastLocation（缓存位置）
+ * 3. 都失败则返回 LocationUnavailableException
  */
 class FusedLocationRepository(
-    private val fusedLocationClient: FusedLocationProviderClient,
-    private val dispatcher: CoroutineContext = Dispatchers.Default
+    private val fusedLocationClient: FusedLocationProviderClient
 ) : LocationRepository {
 
-    override suspend fun getCurrentLocation(): Result<LocationResult> = withContext(dispatcher) {
-        try {
-            val lastLocation = fusedLocationClient.lastLocation.await()
-            if (lastLocation != null) {
-                return@withContext Result.success(lastLocation.toResult())
+    override suspend fun getCurrentLocation(): Result<LocationResult> = try {
+        // 第一步：主动请求一次新鲜定位（CurrentLocationRequest 自带超时）
+        val freshLocation = try {
+            val request = CurrentLocationRequest.Builder()
+                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                .setDurationMillis(LOCATION_TIMEOUT_MS)
+                .setMaxUpdateAgeMillis(0)
+                .build()
+            fusedLocationClient.getCurrentLocation(request, null).await()
+        } catch (_: Exception) {
+            null
+        }
+
+        if (freshLocation != null) {
+            Result.success(freshLocation.toResult())
+        } else {
+            // 第二步：回退到 lastLocation
+            val lastLocation = try {
+                fusedLocationClient.lastLocation.await()
+            } catch (_: Exception) {
+                null
             }
-            // lastLocation 为 null（常见于 Wear OS 首次启动或长时间未使用定位），
-            // 主动请求一次单次定位更新
-            val freshLocation = requestSingleLocationUpdate()
-            if (freshLocation != null) {
-                Result.success(freshLocation.toResult())
+            if (lastLocation != null) {
+                Result.success(lastLocation.toResult())
             } else {
                 Result.failure(LocationUnavailableException())
             }
-        } catch (e: SecurityException) {
-            Result.failure(LocationPermissionDeniedException())
-        } catch (e: Exception) {
-            Result.failure(LocationUnavailableException())
         }
+    } catch (_: SecurityException) {
+        Result.failure(LocationPermissionDeniedException())
+    } catch (_: Exception) {
+        Result.failure(LocationUnavailableException())
     }
-
-    private suspend fun requestSingleLocationUpdate(): Location? =
-        suspendCancellableCoroutine { continuation ->
-            val locationRequest = LocationRequest.Builder(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                LOCATION_UPDATE_INTERVAL_MS
-            )
-                .setMaxUpdates(1)
-                .setWaitForAccurateLocation(false)
-                .build()
-
-            val callback = object : com.google.android.gms.location.LocationCallback() {
-                override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
-                    fusedLocationClient.removeLocationUpdates(this)
-                    continuation.resume(result.lastLocation)
-                }
-            }
-
-            try {
-                fusedLocationClient.requestLocationUpdates(
-                    locationRequest,
-                    callback,
-                    null // 使用调用线程的 looper
-                ).addOnFailureListener {
-                    fusedLocationClient.removeLocationUpdates(callback)
-                    if (continuation.isActive) {
-                        continuation.resume(null)
-                    }
-                }
-            } catch (e: SecurityException) {
-                if (continuation.isActive) {
-                    continuation.resume(null)
-                }
-            }
-
-            continuation.invokeOnCancellation {
-                fusedLocationClient.removeLocationUpdates(callback)
-            }
-        }
 
     private fun Location.toResult(): LocationResult = LocationResult(
         latitude = latitude,
@@ -89,7 +63,7 @@ class FusedLocationRepository(
     )
 
     companion object {
-        private const val LOCATION_UPDATE_INTERVAL_MS = 5000L
+        private const val LOCATION_TIMEOUT_MS = 10_000L
     }
 }
 
