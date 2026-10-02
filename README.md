@@ -218,7 +218,7 @@ OpenWeatherMap One Call API 3.0（暂未接入 Key，当前用 Mock 数据）。
 
 - [x] M1 项目骨架
 - [x] M1.5 性能优化基线（Immutable / Strong Skipping / Baseline Profile）
-- [ ] M2 GPS 定位与权限
+- [x] M2 GPS 定位与权限
 - [ ] M3 实时天气主屏（接入 OWM API）
 - [ ] M4 表圈逐时预报校准
 - [ ] M5 手动刷新 + 错误处理

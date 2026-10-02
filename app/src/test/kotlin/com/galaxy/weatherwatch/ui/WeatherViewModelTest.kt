@@ -1,7 +1,10 @@
 package com.galaxy.weatherwatch.ui
 
 import app.cash.turbine.test
+import com.galaxy.weatherwatch.data.LocationRepository
+import com.galaxy.weatherwatch.data.LocationUnavailableException
 import com.galaxy.weatherwatch.data.MockWeatherRepository
+import com.galaxy.weatherwatch.data.model.LocationResult
 import com.galaxy.weatherwatch.util.MainDispatcherRule
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -16,14 +19,16 @@ class WeatherViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     @Test
-    fun `initial state is Loading then Success when repository returns data`() =
+    fun `initial state is Loading then Success after refresh when repository returns data`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val repo = MockWeatherRepository(simulateDelayMs = 0L)
-            val viewModel = WeatherViewModel(repository = repo)
+            val viewModel = WeatherViewModel(weatherRepository = repo)
 
             viewModel.uiState.test {
                 val first = awaitItem()
                 assertTrue("initial state should be Loading", first is WeatherUiState.Loading)
+
+                viewModel.refresh()
 
                 val second = awaitItem()
                 assertTrue("next state should be Success", second is WeatherUiState.Success)
@@ -36,10 +41,13 @@ class WeatherViewModelTest {
     fun `refresh keeps old snapshot and flips isRefreshing in a single state`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val repo = MockWeatherRepository(simulateDelayMs = 0L)
-            val viewModel = WeatherViewModel(repository = repo)
+            val viewModel = WeatherViewModel(weatherRepository = repo)
 
             viewModel.uiState.test {
                 assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                // 首次刷新
+                viewModel.refresh()
                 val firstSuccess = awaitItem() as WeatherUiState.Success
                 assertFalse(firstSuccess.isRefreshing)
 
@@ -63,10 +71,13 @@ class WeatherViewModelTest {
                 simulateDelayMs = 0L,
                 failureMode = MockWeatherRepository.FailureMode.NETWORK
             )
-            val viewModel = WeatherViewModel(repository = repo)
+            val viewModel = WeatherViewModel(weatherRepository = repo)
 
             viewModel.uiState.test {
                 assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
                 val terminal = awaitItem()
                 assertTrue("terminal state should be Error", terminal is WeatherUiState.Error)
                 assertEquals(
@@ -90,10 +101,12 @@ class WeatherViewModelTest {
                         MockWeatherRepository(simulateDelayMs = 0L).fetchWeather(lat, lon)
                     }
             }
-            val viewModel = WeatherViewModel(repository = repo)
+            val viewModel = WeatherViewModel(weatherRepository = repo)
 
             viewModel.uiState.test {
                 assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
                 assertTrue(awaitItem() is WeatherUiState.Error)
 
                 fail = false
@@ -101,6 +114,116 @@ class WeatherViewModelTest {
 
                 assertTrue("retry should show Loading", awaitItem() is WeatherUiState.Loading)
                 assertTrue("then Success", awaitItem() is WeatherUiState.Success)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // ---- 定位相关测试 ----
+
+    @Test
+    fun `refreshWithPermissionCheck - 无权限时直接返回 PERMISSION_DENIED`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = WeatherViewModel(
+                weatherRepository = MockWeatherRepository(simulateDelayMs = 0L)
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refreshWithPermissionCheck(hasPermission = false)
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.PERMISSION_DENIED, error.type)
+                assertFalse(error.isRefreshing)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refreshWithPermissionCheck - 有权限时调用 refresh`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val repo = MockWeatherRepository(simulateDelayMs = 0L)
+            val viewModel = WeatherViewModel(weatherRepository = repo)
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refreshWithPermissionCheck(hasPermission = true)
+
+                assertTrue(awaitItem() is WeatherUiState.Success)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - 有 LocationRepository 时先定位再取天气`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(
+                        LocationResult(
+                            latitude = 31.2304,
+                            longitude = 121.4737,
+                            accuracy = 10f,
+                            epochSecond = 1_000_000L
+                        )
+                    )
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val success = awaitItem()
+                assertTrue("should be Success after location + weather", success is WeatherUiState.Success)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - 定位失败时状态为 Error GPS_UNAVAILABLE`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.failure(LocationUnavailableException())
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.GPS_UNAVAILABLE, error.type)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - locationRepository 为 null 时回退到硬编码坐标`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            // locationRepository 不传，默认为 null
+            val viewModel = WeatherViewModel(weatherRepository = weatherRepo)
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                // 应该成功返回数据，使用回退坐标
+                assertTrue(awaitItem() is WeatherUiState.Success)
                 cancelAndIgnoreRemainingEvents()
             }
         }

@@ -16,8 +16,10 @@
   - [2.1 WeatherRepository 接口](#21-weatherrepository-接口)
   - [2.2 MockWeatherRepository](#22-mockweatherrepository)
   - [2.3 OpenWeatherRepository](#23-openweatherrepository)
-  - [2.4 数据模型](#24-数据模型)
-  - [2.5 异常体系](#25-异常体系)
+  - [2.4 LocationRepository 接口](#24-locationrepository-接口)
+  - [2.5 FusedLocationRepository](#25-fusedlocationrepository)
+  - [2.6 数据模型](#26-数据模型)
+  - [2.7 异常体系](#27-异常体系)
 - [3. ViewModel 层详解](#3-viewmodel-层详解)
   - [3.1 WeatherViewModel](#31-weatherviewmodel)
   - [3.2 WeatherUiState](#32-weatheruistate)
@@ -77,9 +79,10 @@
 │              │  - 业务逻辑编排       │                  │
 │              │  - 协程生命周期管理   │                  │
 │              └──────────┬───────────┘                  │
-└──────────────────┬──────┴──────────────────────────────┘
-                   │ WeatherRepository 接口
-                   ▼
+└───────────┬─────────────┴──────────────────────────────┘
+            │ WeatherRepository 接口
+            │ LocationRepository 接口
+            ▼
 ┌───────────────────────────────────────────────────────┐
 │                    Data Layer                          │
 │  ┌──────────────────────┐  ┌──────────────────────┐  │
@@ -91,6 +94,14 @@
 │                         │                             │
 │                   WeatherRepository                    │
 │                    (接口契约)                          │
+│                                                       │
+│  ┌────────────────────────────────────────────────┐   │
+│  │          FusedLocationRepository                │   │
+│  │          (Google Play Services 定位)            │   │
+│  └───────────────────┬────────────────────────────┘   │
+│                      │                                │
+│                LocationRepository                     │
+│                 (接口契约)                            │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -192,7 +203,43 @@ OpenWeatherMap One Call API 3.0 的实现。
 - API Key 注入（当前需手动传入）
 - 里程碑 M3 完成后启用
 
-### 2.4 数据模型
+### 2.4 LocationRepository 接口
+
+**文件：** `data/LocationRepository.kt`
+
+```kotlin
+interface LocationRepository {
+    suspend fun getCurrentLocation(): Result<LocationResult>
+}
+```
+
+**设计要点：**
+- 与 WeatherRepository 解耦，各自遵循单一职责
+- 返回 `Result<LocationResult>`，统一异常封装
+- ViewModel 层负责串联「定位 → 取天气」的流程
+
+### 2.5 FusedLocationRepository
+
+**文件：** `data/FusedLocationRepository.kt`
+
+基于 Google Play Services `FusedLocationProviderClient` 的定位实现。
+
+**技术栈：**
+- 定位引擎：`FusedLocationProviderClient`（Wear OS 上优先使用 GPS + 网络融合）
+- 协程桥接：`kotlinx-coroutines-play-services` 的 `Task.await()` 扩展
+- 线程调度：`withContext(Dispatchers.Default)`
+
+**获取策略：**
+1. 优先调用 `lastLocation` 获取缓存位置（快速、低功耗）
+2. 若 `lastLocation` 为 null（常见于 Wear OS 首次启动或长时间未使用定位），
+   降级为 `requestLocationUpdates` 单次请求（`maxUpdates = 1`）
+3. 成功 → `Result.success(LocationResult)`
+4. 失败 → `Result.failure(LocationUnavailableException)`
+5. 权限缺失 → `Result.failure(LocationPermissionDeniedException)`
+
+**注意**：运行时权限检查在 Activity/Compose 层进行，Repository 只负责「有权限时的定位获取」。
+
+### 2.6 数据模型
 
 **文件：** `data/model/Weather.kt`
 
@@ -263,16 +310,31 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 
 `fromCode(code: String?)` 方法用于从 OWM 返回的图标代码反查枚举，默认返回 `CLEAR_DAY`。
 
-### 2.5 异常体系
+#### LocationResult
 
-所有自定义异常定义在 `MockWeatherRepository.kt` 文件底部：
+**文件：** `data/model/LocationResult.kt`
+
+定位结果数据模型：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| latitude | Double | 纬度 |
+| longitude | Double | 经度 |
+| accuracy | Float | 精度（米） |
+| epochSecond | Long | 定位时间戳（秒级） |
+
+### 2.7 异常体系
+
+天气相关异常定义在 `MockWeatherRepository.kt` 文件底部，定位相关异常定义在 `FusedLocationRepository.kt` 文件底部：
 
 | 异常类 | 触发场景 | UI 展示 |
 |--------|---------|---------|
 | NoNetworkException | 无网络连接 | 请检查网络连接 |
 | TimeoutException | 请求超时 | 网络请求超时，请重试 |
 | ApiException | 服务端错误（非 200） | 天气服务暂不可用 |
-| GpsUnavailableException | 无法获取位置 | 无法获取位置信息 |
+| GpsUnavailableException | 无法获取位置（天气层） | 无法获取位置信息 |
+| LocationPermissionDeniedException | 定位权限被拒绝 | 缺少位置权限 |
+| LocationUnavailableException | 定位服务不可用（定位层） | 无法获取位置信息 |
 
 异常在 ViewModel 层通过 `toErrorType()` 转换为 `WeatherUiState.ErrorType` 枚举，UI 层不直接处理异常类。
 
@@ -297,18 +359,29 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 | uiState | `StateFlow<WeatherUiState>` | UI 状态流（只读对外暴露） |
 | _uiState | `MutableStateFlow<WeatherUiState>` | 内部可变状态流 |
 | refreshJob | `Job?` | 当前刷新任务，用于防重复刷新 |
-| repository | `WeatherRepository` | 数据源（构造注入，默认 Mock） |
+| weatherRepository | `WeatherRepository` | 天气数据源（构造注入，默认 Mock） |
+| locationRepository | `LocationRepository?` | 定位数据源（构造注入，可空，为 null 时回退硬编码坐标） |
 
 **关键方法：**
+
+- `refreshWithPermissionCheck(hasPermission: Boolean)`：权限检查入口
+  - 无权限 → 直接设置 `Error(PERMISSION_DENIED)`
+  - 有权限 → 调用 `refresh()`
+  - 由 Activity/Compose 层调用，因为权限状态只能在宿主层获取
 
 - `refresh()`：发起刷新
   - 已有任务进行中则直接返回（防抖）
   - 已有数据时保留旧快照、只翻转 `isRefreshing` 标记
-  - 无数据时进入 Loading 状态
+  - 无数据或错误时进入 Loading 状态
+  - **流程**：先定位 → 再用定位坐标取天气
+    - `locationRepository` 不为 null 时调用 `getCurrentLocation()`
+    - 定位失败 → `Error(GPS_UNAVAILABLE)`
+    - 定位成功 → 调用 `weatherRepository.fetchWeather(lat, lon)`
+    - `locationRepository` 为 null 时回退到硬编码坐标（兼容测试与未注入场景）
   - 通过 `viewModelScope` 启动协程，ViewModel 销毁时自动取消
 
 **注入方式：**
-- 构造函数参数注入，默认使用 `MockWeatherRepository()`
+- 构造函数参数注入，默认使用 `MockWeatherRepository()`，`locationRepository` 默认为 null
 - 未来接入 DI 框架（如 Hilt）后可改为自动注入
 - 测试时可传入 Mock/Fake 实现
 

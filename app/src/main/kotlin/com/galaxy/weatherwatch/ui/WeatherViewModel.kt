@@ -2,6 +2,9 @@ package com.galaxy.weatherwatch.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.galaxy.weatherwatch.data.GpsUnavailableException
+import com.galaxy.weatherwatch.data.LocationRepository
+import com.galaxy.weatherwatch.data.LocationUnavailableException
 import com.galaxy.weatherwatch.data.MockWeatherRepository
 import com.galaxy.weatherwatch.data.NoNetworkException
 import com.galaxy.weatherwatch.data.TimeoutException
@@ -15,7 +18,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class WeatherViewModel(
-    private val repository: WeatherRepository = MockWeatherRepository()
+    private val weatherRepository: WeatherRepository = MockWeatherRepository(),
+    private val locationRepository: LocationRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
@@ -23,7 +27,20 @@ class WeatherViewModel(
 
     private var refreshJob: Job? = null
 
-    init {
+    /**
+     * 检查定位权限并启动刷新流程。
+     * 由 Activity/Compose 层调用，因为权限状态只能在宿主层获取。
+     *
+     * @param hasPermission 是否已授予定位权限
+     */
+    fun refreshWithPermissionCheck(hasPermission: Boolean) {
+        if (!hasPermission) {
+            _uiState.value = WeatherUiState.Error(
+                type = WeatherUiState.ErrorType.PERMISSION_DENIED,
+                isRefreshing = false
+            )
+            return
+        }
         refresh()
     }
 
@@ -38,15 +55,34 @@ class WeatherViewModel(
                     else -> WeatherUiState.Loading
                 }
             }
-            // TODO(里程碑2): 用 FusedLocationProviderClient 取真实 GPS
-            val lat = 39.9042
-            val lon = 116.4074
-            val result = repository.fetchWeather(lat, lon)
-            _uiState.value = result.fold(
+
+            // 第一步：获取位置
+            val locationResult = locationRepository?.getCurrentLocation()
+            val (lat, lon) = if (locationResult != null) {
+                locationResult.fold(
+                    onSuccess = { it.latitude to it.longitude },
+                    onFailure = {
+                        _uiState.value = WeatherUiState.Error(it.toErrorType())
+                        return@launch
+                    }
+                )
+            } else {
+                // locationRepository 为 null 时回退到硬编码坐标（兼容测试与未注入场景）
+                FALLBACK_LAT to FALLBACK_LON
+            }
+
+            // 第二步：获取天气
+            val weatherResult = weatherRepository.fetchWeather(lat, lon)
+            _uiState.value = weatherResult.fold(
                 onSuccess = { WeatherUiState.Success(it) },
-                onFailure = { WeatherUiState.Error(it.toErrorType()) }
+                onFailure = { WeatherUiState.Error(it.toErrorType(), isRefreshing = false) }
             )
         }
+    }
+
+    companion object {
+        private const val FALLBACK_LAT = 39.9042
+        private const val FALLBACK_LON = 116.4074
     }
 }
 
@@ -54,7 +90,9 @@ private fun Throwable.toErrorType(): WeatherUiState.ErrorType = when (this) {
     is NoNetworkException -> WeatherUiState.ErrorType.NO_NETWORK
     is TimeoutException -> WeatherUiState.ErrorType.TIMEOUT
     is com.galaxy.weatherwatch.data.ApiException -> WeatherUiState.ErrorType.API_ERROR
-    is com.galaxy.weatherwatch.data.GpsUnavailableException -> WeatherUiState.ErrorType.GPS_UNAVAILABLE
+    is GpsUnavailableException -> WeatherUiState.ErrorType.GPS_UNAVAILABLE
+    is LocationUnavailableException -> WeatherUiState.ErrorType.GPS_UNAVAILABLE
+    is com.galaxy.weatherwatch.data.LocationPermissionDeniedException -> WeatherUiState.ErrorType.PERMISSION_DENIED
     else -> WeatherUiState.ErrorType.API_ERROR
 }
 

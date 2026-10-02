@@ -20,8 +20,12 @@ fun ErrorScreen(
     type: WeatherUiState.ErrorType,
     isRefreshing: Boolean,
     onRetry: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isPermissionDenied = type == WeatherUiState.ErrorType.PERMISSION_DENIED
+    val buttonAction = if (isPermissionDenied) onOpenAppSettings else onRetry
+
     Box(
         modifier = modifier.fillMaxSize().padding(16.dp),
         contentAlignment = Alignment.Center
@@ -40,11 +44,11 @@ fun ErrorScreen(
                 style = MaterialTheme.typography.body2,
                 color = MaterialTheme.colors.onSurface
             )
-            Button(onClick = onRetry, enabled = !isRefreshing) {
+            Button(onClick = buttonAction, enabled = !isRefreshing) {
                 if (isRefreshing) {
                     CircularProgressIndicator()
                 } else {
-                    Text(text = if (type == WeatherUiState.ErrorType.PERMISSION_DENIED) "去设置" else "重试")
+                    Text(text = if (isPermissionDenied) "去设置" else "重试")
                 }
             }
         }
