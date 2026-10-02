@@ -1,6 +1,7 @@
 package com.galaxy.weatherwatch.ui
 
 import app.cash.turbine.test
+import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.LocationRepository
 import com.galaxy.weatherwatch.data.LocationUnavailableException
 import com.galaxy.weatherwatch.data.MockWeatherRepository
@@ -224,6 +225,104 @@ class WeatherViewModelTest {
 
                 // 应该成功返回数据，使用回退坐标
                 assertTrue(awaitItem() is WeatherUiState.Success)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // ---- 地理编码相关测试 ----
+
+    @Test
+    fun `refresh - 地理编码成功时使用真实位置名称`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(
+                        LocationResult(31.2304, 121.4737, 10f, 1_000_000L)
+                    )
+            }
+            val geocodingRepo = object : GeocodingRepository {
+                override suspend fun getLocationName(lat: Double, lon: Double): String? =
+                    "上海市 黄浦区"
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                geocodingRepository = geocodingRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val success = awaitItem() as WeatherUiState.Success
+                assertEquals("上海市 黄浦区", success.snapshot.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - 地理编码失败时降级显示经纬度`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(
+                        LocationResult(31.2304, 121.4737, 10f, 1_000_000L)
+                    )
+            }
+            val geocodingRepo = object : GeocodingRepository {
+                override suspend fun getLocationName(lat: Double, lon: Double): String? = null
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                geocodingRepository = geocodingRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val success = awaitItem() as WeatherUiState.Success
+                // 降级为经纬度格式
+                assertTrue(
+                    "locationName should be lat/lon format",
+                    success.snapshot.locationName.contains("°N") && success.snapshot.locationName.contains("°E")
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - geocodingRepository 为 null 时降级显示经纬度`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(
+                        LocationResult(-23.5505, -46.6333, 10f, 1_000_000L)
+                    )
+            }
+            // geocodingRepository 不传，默认为 null
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val success = awaitItem() as WeatherUiState.Success
+                // 南纬西经格式
+                assertTrue(
+                    "locationName should show S and W",
+                    success.snapshot.locationName.contains("°S") && success.snapshot.locationName.contains("°W")
+                )
                 cancelAndIgnoreRemainingEvents()
             }
         }

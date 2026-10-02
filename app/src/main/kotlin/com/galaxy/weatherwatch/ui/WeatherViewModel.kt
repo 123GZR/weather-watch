@@ -2,6 +2,7 @@ package com.galaxy.weatherwatch.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.GpsUnavailableException
 import com.galaxy.weatherwatch.data.LocationRepository
 import com.galaxy.weatherwatch.data.LocationUnavailableException
@@ -11,6 +12,7 @@ import com.galaxy.weatherwatch.data.TimeoutException
 import com.galaxy.weatherwatch.data.WeatherRepository
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +21,8 @@ import kotlinx.coroutines.launch
 
 class WeatherViewModel(
     private val weatherRepository: WeatherRepository = MockWeatherRepository(),
-    private val locationRepository: LocationRepository? = null
+    private val locationRepository: LocationRepository? = null,
+    private val geocodingRepository: GeocodingRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
@@ -71,13 +74,39 @@ class WeatherViewModel(
                 FALLBACK_LAT to FALLBACK_LON
             }
 
-            // 第二步：获取天气
+            // 第二步：并行获取位置名称 + 天气数据
+            val locationNameDeferred = async {
+                resolveLocationName(lat, lon)
+            }
             val weatherResult = weatherRepository.fetchWeather(lat, lon)
+            val locationName = locationNameDeferred.await()
+
             _uiState.value = weatherResult.fold(
-                onSuccess = { WeatherUiState.Success(it) },
+                onSuccess = { snapshot ->
+                    WeatherUiState.Success(
+                        snapshot.copy(locationName = locationName)
+                    )
+                },
                 onFailure = { WeatherUiState.Error(it.toErrorType(), isRefreshing = false) }
             )
         }
+    }
+
+    /**
+     * 解析位置名称：优先反向地理编码，失败时降级为经纬度格式。
+     */
+    private suspend fun resolveLocationName(lat: Double, lon: Double): String {
+        geocodingRepository?.let { repo ->
+            val name = repo.getLocationName(lat, lon)
+            if (!name.isNullOrBlank()) return name
+        }
+        // 降级：显示经纬度
+        val latDir = if (lat >= 0) "N" else "S"
+        val lonDir = if (lon >= 0) "E" else "W"
+        return "%.2f°%s, %.2f°%s".format(
+            kotlin.math.abs(lat), latDir,
+            kotlin.math.abs(lon), lonDir
+        )
     }
 
     companion object {
