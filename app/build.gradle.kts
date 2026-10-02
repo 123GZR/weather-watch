@@ -63,11 +63,10 @@ android {
     }
 }
 
-// 组合性能：strong skipping 让带稳定参数的 Composable 可跳过重组，
-// 是手表低性能 SoC 上最直接的组合优化之一（顶层扩展，由 Kotlin Compose 插件提供）
-composeCompiler {
-    featureFlags.add(org.jetbrains.kotlin.compose.compiler.gradle.ComposeFeatureFlag.StrongSkipping)
-}
+// 组合性能说明：Kotlin 2.0.20 的 Compose 编译器默认开启 strong skipping
+// （带稳定参数的 Composable 可跳过重组），无需额外配置；
+// 若未来升级 Kotlin 版本后默认值变化，可通过 featureFlags 显式控制：
+//   featureFlags.add(org.jetbrains.kotlin.compose.compiler.gradle.ComposeFeatureFlag.StrongSkipping)
 
 dependencies {
     // AndroidX core
