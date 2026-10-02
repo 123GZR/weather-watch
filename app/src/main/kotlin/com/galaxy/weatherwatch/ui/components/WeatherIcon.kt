@@ -36,7 +36,7 @@ fun WeatherIcon(
         Text(
             text = icon.emoji(),
             style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colors.on
+            color = MaterialTheme.colors.onSurface
         )
     }
 }

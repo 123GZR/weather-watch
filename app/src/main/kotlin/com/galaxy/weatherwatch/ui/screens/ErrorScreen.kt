@@ -36,7 +36,7 @@ fun ErrorScreen(
             Text(
                 text = type.hint(),
                 style = MaterialTheme.typography.body2,
-                color = MaterialTheme.colors.on
+                color = MaterialTheme.colors.onSurface
             )
             Button(onClick = onRetry) {
                 Text(text = if (type == WeatherUiState.ErrorType.PERMISSION_DENIED) "去设置" else "重试")

@@ -17,7 +17,7 @@ fun LoadingScreen(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "正在获取天气…",
-            color = MaterialTheme.colors.on,
+            color = MaterialTheme.colors.onSurface,
             style = MaterialTheme.typography.body1
         )
         CircularProgressIndicator()
