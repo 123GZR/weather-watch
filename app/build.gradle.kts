@@ -63,6 +63,12 @@ android {
     }
 }
 
+// 组合性能：strong skipping 让带稳定参数的 Composable 可跳过重组，
+// 是手表低性能 SoC 上最直接的组合优化之一（顶层扩展，由 Kotlin Compose 插件提供）
+composeCompiler {
+    enableStrongSkipping = true
+}
+
 dependencies {
     // AndroidX core
     implementation(libs.androidx.core.ktx)
