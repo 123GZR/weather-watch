@@ -1,8 +1,6 @@
 package com.galaxy.weatherwatch.ui.screens
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +35,7 @@ import com.galaxy.weatherwatch.data.model.CurrentWeather
 import com.galaxy.weatherwatch.data.model.DailySummary
 import com.galaxy.weatherwatch.data.model.HourlyForecast
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
-import com.galaxy.weatherwatch.ui.components.LocationPinIcon
+import com.galaxy.weatherwatch.ui.components.LocationBar
 import com.galaxy.weatherwatch.ui.components.WeatherIcon
 import java.time.Instant
 import java.time.ZoneId
@@ -132,35 +130,6 @@ private fun TopFadeOverlay(
 
     Canvas(modifier = modifier) {
         drawRect(brush = brush)
-    }
-}
-
-@Composable
-private fun LocationBar(
-    locationName: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Row(
-        modifier = modifier
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        LocationPinIcon(sizeDp = 14)
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = locationName,
-            style = MaterialTheme.typography.caption2,
-            color = MaterialTheme.colors.onSurfaceVariant,
-            letterSpacing = 0.6.sp
-        )
     }
 }
 

@@ -459,6 +459,7 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 | showCitySearch | `StateFlow<Boolean>` | 是否显示城市搜索页 |
 | citySearchResults | `StateFlow<List<City>>` | 城市搜索结果列表 |
 | refreshJob | `Job?` | 当前刷新任务，用于防重复刷新 |
+| lastLocationName | `String` | 最近一次成功获取的位置名称，失败页展示兜底 |
 | weatherRepository | `WeatherRepository` | 天气数据源（构造注入，默认 Mock） |
 | locationRepository | `LocationRepository?` | 定位数据源（构造注入，可空） |
 | geocodingRepository | `GeocodingRepository?` | 地理编码数据源（构造注入，可空） |
@@ -504,7 +505,11 @@ UI 状态的密封接口，三种状态：
 sealed interface WeatherUiState {
     data object Loading : WeatherUiState
     data class Success(val snapshot: WeatherSnapshot, val isRefreshing: Boolean = false) : WeatherUiState
-    data class Error(val type: ErrorType, val isRefreshing: Boolean = false) : WeatherUiState
+    data class Error(
+        val type: ErrorType,
+        val isRefreshing: Boolean = false,
+        val locationName: String = ""   // 失败页展示的位置名称（最后一次成功定位/手动选择的位置）
+    ) : WeatherUiState
 }
 ```
 
@@ -513,6 +518,9 @@ sealed interface WeatherUiState {
 - `Success` 和 `Error` 状态携带 `isRefreshing` 字段
   - 支持「已有数据 + 正在刷新」的中间状态
   - 避免刷新时整屏闪回 Loading，提升体验
+- `Error` 状态携带 `locationName`：定位成功但取天气失败时展示已解析的位置名，
+  定位失败时展示上一次成功的位置名（ViewModel 中 `lastLocationName` 兜底），
+  失败页据此显示位置条并支持「手动选择城市」恢复
 - `ErrorType` 枚举区分错误类型，UI 根据类型展示不同文案
 
 **ErrorType 枚举：**
@@ -650,7 +658,12 @@ rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState
 **文件：** `ui/screens/LoadingScreen.kt`、`ui/screens/ErrorScreen.kt`
 
 - **LoadingScreen**：居中显示圆形进度条
-- **ErrorScreen**：根据 `ErrorType` 展示不同错误信息 + 重试按钮
+- **ErrorScreen**：根据 `ErrorType` 展示不同错误信息，并提供位置相关的恢复能力
+  - 顶部**位置条**（与 HomeScreen 共用 `LocationBar` 组件）：展示最后一次已知位置，
+    位置为空时显示「未获取位置」；点击进入城市选择
+  - 主按钮：**重试**（权限拒绝时为「去设置」）
+  - 次按钮：**手动选择城市**——按用户所选位置重新获取天气，不依赖 GPS/网络自动定位
+  - 位置名由 `WeatherUiState.Error.locationName` 提供，来源见 [3.2 WeatherUiState](#32-weatheruistate)
 
 ### 4.4 WeatherIcon 组件
 

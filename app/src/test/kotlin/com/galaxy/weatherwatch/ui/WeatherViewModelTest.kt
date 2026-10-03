@@ -515,4 +515,169 @@ class WeatherViewModelTest {
                 assertFalse("closeCitySearch 后应为 false", expectMostRecentItem())
             }
         }
+
+    // ---- 失败页位置信息相关测试 ----
+
+    @Test
+    fun `refresh - 天气获取失败时 Error 携带已解析的位置名称`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(
+                simulateDelayMs = 0L,
+                failureMode = MockWeatherRepository.FailureMode.NETWORK
+            )
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(LocationResult(31.2304, 121.4737, 10f, 1_000_000L))
+            }
+            val geocodingRepo = object : GeocodingRepository {
+                override suspend fun getLocationName(lat: Double, lon: Double): String? =
+                    "上海市 黄浦区"
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                geocodingRepository = geocodingRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.NO_NETWORK, error.type)
+                assertEquals(
+                    "失败页应展示已解析的位置名称",
+                    "上海市 黄浦区",
+                    error.locationName
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - 定位失败时 Error 携带上一次成功的位置名称`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            var locationFails = false
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    if (locationFails) {
+                        Result.failure(LocationUnavailableException())
+                    } else {
+                        Result.success(LocationResult(31.2304, 121.4737, 10f, 1_000_000L))
+                    }
+            }
+            val geocodingRepo = object : GeocodingRepository {
+                override suspend fun getLocationName(lat: Double, lon: Double): String? =
+                    "上海市 黄浦区"
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                geocodingRepository = geocodingRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                // 第一次刷新成功，记录位置
+                viewModel.refresh()
+                val success = awaitItem() as WeatherUiState.Success
+                assertEquals("上海市 黄浦区", success.snapshot.locationName)
+
+                // 第二次定位失败：应携带上一次成功的位置名称
+                locationFails = true
+                viewModel.refresh()
+                assertTrue(awaitItem() is WeatherUiState.Success) // 已有数据，先翻转 isRefreshing
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.GPS_UNAVAILABLE, error.type)
+                assertEquals("上海市 黄浦区", error.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refreshWithPermissionCheck - 无权限时 Error 携带上一次成功的位置名称`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(LocationResult(31.2304, 121.4737, 10f, 1_000_000L))
+            }
+            val geocodingRepo = object : GeocodingRepository {
+                override suspend fun getLocationName(lat: Double, lon: Double): String? =
+                    "上海市 黄浦区"
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                geocodingRepository = geocodingRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                // 先成功一次，记住位置
+                viewModel.refresh()
+                assertTrue(awaitItem() is WeatherUiState.Success)
+
+                // 用户拒绝权限：失败页仍展示上次位置
+                viewModel.refreshWithPermissionCheck(hasPermission = false)
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.PERMISSION_DENIED, error.type)
+                assertEquals("上海市 黄浦区", error.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refreshWithPermissionCheck - 从未成功过时无权限 Error 位置名称为空`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = WeatherViewModel(
+                weatherRepository = MockWeatherRepository(simulateDelayMs = 0L)
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refreshWithPermissionCheck(hasPermission = false)
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.PERMISSION_DENIED, error.type)
+                assertEquals("", error.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `selectCity - 城市天气获取失败时 Error 携带所选城市名`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(
+                simulateDelayMs = 0L,
+                failureMode = MockWeatherRepository.FailureMode.NETWORK
+            )
+            val testCity = City(
+                name = "佛山市 顺德区",
+                pinyin = "shunde",
+                abbreviation = "sdq",
+                latitude = 22.8400,
+                longitude = 113.2800
+            )
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                cityRepository = LocalCityRepository()
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.selectCity(testCity)
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.NO_NETWORK, error.type)
+                assertEquals("所选城市名应展示在失败页", "佛山市 顺德区", error.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
 }

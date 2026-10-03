@@ -41,6 +41,9 @@ class WeatherViewModel(
 
     private var refreshJob: Job? = null
 
+    /** 最近一次成功获取的位置名称，供失败页展示兜底（失败时仍可看到当前位置） */
+    private var lastLocationName: String = ""
+
     /**
      * 检查定位权限并启动刷新流程。
      * 由 Activity/Compose 层调用，因为权限状态只能在宿主层获取。
@@ -51,7 +54,8 @@ class WeatherViewModel(
         if (!hasPermission) {
             _uiState.value = WeatherUiState.Error(
                 type = WeatherUiState.ErrorType.PERMISSION_DENIED,
-                isRefreshing = false
+                isRefreshing = false,
+                locationName = lastLocationName
             )
             return
         }
@@ -76,7 +80,11 @@ class WeatherViewModel(
                 locationResult.fold(
                     onSuccess = { it.latitude to it.longitude },
                     onFailure = {
-                        _uiState.value = WeatherUiState.Error(it.toErrorType())
+                        // 定位失败：展示最后一次已知位置（可能为空）
+                        _uiState.value = WeatherUiState.Error(
+                            type = it.toErrorType(),
+                            locationName = lastLocationName
+                        )
                         return@launch
                     }
                 )
@@ -91,6 +99,8 @@ class WeatherViewModel(
             }
             val weatherResult = weatherRepository.fetchWeather(lat, lon)
             val locationName = locationNameDeferred.await()
+            // 位置已解析成功（GPS 可用），记录下来供失败页展示
+            lastLocationName = locationName
 
             _uiState.value = weatherResult.fold(
                 onSuccess = { snapshot ->
@@ -98,7 +108,13 @@ class WeatherViewModel(
                         snapshot.copy(locationName = locationName)
                     )
                 },
-                onFailure = { WeatherUiState.Error(it.toErrorType(), isRefreshing = false) }
+                onFailure = {
+                    WeatherUiState.Error(
+                        type = it.toErrorType(),
+                        isRefreshing = false,
+                        locationName = locationName
+                    )
+                }
             )
         }
     }
@@ -160,6 +176,7 @@ class WeatherViewModel(
             }
 
             val weatherResult = weatherRepository.fetchWeather(lat, lon)
+            lastLocationName = locationName
 
             _uiState.value = weatherResult.fold(
                 onSuccess = { snapshot ->
@@ -167,7 +184,13 @@ class WeatherViewModel(
                         snapshot.copy(locationName = locationName)
                     )
                 },
-                onFailure = { WeatherUiState.Error(it.toErrorType(), isRefreshing = false) }
+                onFailure = {
+                    WeatherUiState.Error(
+                        type = it.toErrorType(),
+                        isRefreshing = false,
+                        locationName = locationName
+                    )
+                }
             )
         }
     }
@@ -214,7 +237,9 @@ sealed interface WeatherUiState {
 
     data class Error(
         val type: ErrorType,
-        val isRefreshing: Boolean = false
+        val isRefreshing: Boolean = false,
+        /** 失败页展示的位置名称（最后一次成功定位/手动选择的位置，可能为空） */
+        val locationName: String = ""
     ) : WeatherUiState
 
     enum class ErrorType {

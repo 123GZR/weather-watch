@@ -61,9 +61,12 @@ fun WeatherAppScreen(
                 )
                 is WeatherUiState.Error -> ErrorScreen(
                     type = s.type,
+                    locationName = s.locationName,
                     isRefreshing = s.isRefreshing,
                     onRetry = onRetry,
-                    onOpenAppSettings = onOpenAppSettings
+                    onOpenAppSettings = onOpenAppSettings,
+                    onLocationClick = onLocationClick,
+                    onPickCity = onLocationClick
                 )
             }
         }
