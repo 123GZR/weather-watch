@@ -79,19 +79,29 @@ app/                                    # 主应用模块
     │   │   ├── MainActivity.kt         # 主 Activity
     │   │   ├── data/                   # 数据层
     │   │   │   ├── model/
-    │   │   │   │   ├── Weather.kt      # 数据模型（Immutable）
-    │   │   │   │   └── WeatherIcon.kt  # OWM 图标枚举
-    │   │   │   ├── WeatherRepository.kt       # 仓库接口
+    │   │   │   │   ├── Weather.kt      # 天气数据模型（Immutable）
+    │   │   │   │   ├── WeatherIcon.kt  # OWM 图标枚举
+    │   │   │   │   ├── LocationResult.kt # 定位结果模型
+    │   │   │   │   └── City.kt         # 城市数据模型
+    │   │   │   ├── WeatherRepository.kt       # 天气仓库接口
     │   │   │   ├── MockWeatherRepository.kt   # 本地假数据（当前使用）
-    │   │   │   └── OpenWeatherRepository.kt   # One Call API 3.0 实现
+    │   │   │   ├── OpenWeatherRepository.kt   # One Call API 3.0 实现
+    │   │   │   ├── LocationRepository.kt      # 定位仓库接口
+    │   │   │   ├── FusedLocationRepository.kt # GPS 定位实现
+    │   │   │   ├── GeocodingRepository.kt     # 地理编码接口
+    │   │   │   ├── AndroidGeocodingRepository.kt # 反向地理编码实现
+    │   │   │   ├── CityRepository.kt          # 城市搜索仓库接口
+    │   │   │   └── LocalCityRepository.kt     # 本地城市库（佛山五区）
     │   │   └── ui/                     # UI 层
-    │   │       ├── WeatherAppScreen.kt # 顶层路由（状态分发）
+    │   │       ├── WeatherAppScreen.kt # 顶层路由（状态分发/城市搜索导航）
     │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态
     │   │       ├── theme/Theme.kt      # 主题配置
     │   │       ├── components/
-    │   │       │   └── WeatherIcon.kt  # Canvas 矢量天气图标
+    │   │       │   ├── WeatherIcon.kt  # Canvas 矢量天气图标
+    │   │       │   └── LocationPinIcon.kt # 定位 Pin 图标
     │   │       └── screens/
     │   │           ├── HomeScreen.kt   # 实时天气+今日摘要+逐时列表
+    │   │           ├── CitySearchScreen.kt # 城市搜索/选择
     │   │           ├── LoadingScreen.kt
     │   │           └── ErrorScreen.kt
     │   └── res/
@@ -152,6 +162,8 @@ baselineprofile/                        # Baseline Profile 生成模块
 
 - ⌚ **Wear OS 原生体验**：基于 Wear Compose Material，适配圆形表盘
 - 🌀 **表圈交互**：旋转表圈控制逐时预报列表滚动（snap 行为）
+- 🔍 **手动城市搜索**：支持中文名、拼音、首字母缩写搜索，本地佛山五区城市库
+- 📍 **GPS 定位 + 手动切换**：自动 GPS 定位，也可手动选择城市
 - 🎨 **Canvas 矢量图标**：纯绘制天气图标，无字体依赖，性能更好
 - ⚡ **Compose Strong Skipping**：Kotlin 2.0 编译器默认开启，跳过稳定参数的重组
 - 📊 **单一状态流**：合并加载状态与数据，减少重组次数
@@ -219,6 +231,7 @@ OpenWeatherMap One Call API 3.0（暂未接入 Key，当前用 Mock 数据）。
 - [x] M1 项目骨架
 - [x] M1.5 性能优化基线（Immutable / Strong Skipping / Baseline Profile）
 - [x] M2 GPS 定位与权限
+- [x] M2.5 手动输入城市（本地佛山五区城市库 + 搜索）
 - [ ] M3 实时天气主屏（接入 OWM API）
 - [ ] M4 表圈逐时预报校准
 - [ ] M5 手动刷新 + 错误处理

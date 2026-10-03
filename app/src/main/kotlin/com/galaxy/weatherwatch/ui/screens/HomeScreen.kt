@@ -1,6 +1,8 @@
 package com.galaxy.weatherwatch.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,7 @@ fun HomeScreen(
     snapshot: WeatherSnapshot,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
+    onLocationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
@@ -97,6 +100,7 @@ fun HomeScreen(
         // 顶部固定位置条（在遮罩之上）
         LocationBar(
             locationName = snapshot.locationName,
+            onClick = onLocationClick,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 32.dp)
@@ -134,10 +138,18 @@ private fun TopFadeOverlay(
 @Composable
 private fun LocationBar(
     locationName: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
-        modifier = modifier,
+        modifier = modifier
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {

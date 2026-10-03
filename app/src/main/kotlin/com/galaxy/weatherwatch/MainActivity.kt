@@ -13,6 +13,7 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import com.galaxy.weatherwatch.data.AndroidGeocodingRepository
 import com.galaxy.weatherwatch.data.FusedLocationRepository
+import com.galaxy.weatherwatch.data.LocalCityRepository
 import com.galaxy.weatherwatch.data.MockWeatherRepository
 import com.galaxy.weatherwatch.ui.WeatherAppScreen
 import com.galaxy.weatherwatch.ui.WeatherViewModel
@@ -28,7 +29,8 @@ class MainActivity : ComponentActivity() {
             locationRepository = FusedLocationRepository(
                 LocationServices.getFusedLocationProviderClient(this)
             ),
-            geocodingRepository = AndroidGeocodingRepository(this)
+            geocodingRepository = AndroidGeocodingRepository(this),
+            cityRepository = LocalCityRepository()
         )
     }
 

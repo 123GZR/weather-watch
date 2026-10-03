@@ -1,10 +1,13 @@
 package com.galaxy.weatherwatch.ui
 
 import app.cash.turbine.test
+import com.galaxy.weatherwatch.data.CityRepository
 import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.LocationRepository
 import com.galaxy.weatherwatch.data.LocationUnavailableException
+import com.galaxy.weatherwatch.data.LocalCityRepository
 import com.galaxy.weatherwatch.data.MockWeatherRepository
+import com.galaxy.weatherwatch.data.model.City
 import com.galaxy.weatherwatch.data.model.LocationResult
 import com.galaxy.weatherwatch.util.MainDispatcherRule
 import kotlinx.coroutines.test.runTest
@@ -324,6 +327,192 @@ class WeatherViewModelTest {
                     success.snapshot.locationName.contains("°S") && success.snapshot.locationName.contains("°W")
                 )
                 cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // ---- 城市搜索相关测试 ----
+
+    @Test
+    fun `openCitySearch 显示搜索页并加载全部城市`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = WeatherViewModel(
+                weatherRepository = MockWeatherRepository(simulateDelayMs = 0L),
+                cityRepository = LocalCityRepository()
+            )
+
+            viewModel.showCitySearch.test {
+                assertFalse("初始应不显示城市搜索", awaitItem())
+
+                viewModel.openCitySearch()
+
+                assertTrue("openCitySearch 后应显示城市搜索", awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.citySearchResults.test {
+                // 打开搜索后第一个结果就是全部城市
+                val cities = expectMostRecentItem()
+                assertEquals(5, cities.size)
+            }
+        }
+
+    @Test
+    fun `closeCitySearch 关闭搜索页`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = WeatherViewModel(
+                weatherRepository = MockWeatherRepository(simulateDelayMs = 0L),
+                cityRepository = LocalCityRepository()
+            )
+
+            viewModel.showCitySearch.test {
+                assertFalse(awaitItem())
+
+                viewModel.openCitySearch()
+                assertTrue(awaitItem())
+
+                viewModel.closeCitySearch()
+                assertFalse("closeCitySearch 后应关闭", awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `searchCity 根据关键字筛选城市`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = WeatherViewModel(
+                weatherRepository = MockWeatherRepository(simulateDelayMs = 0L),
+                cityRepository = LocalCityRepository()
+            )
+
+            viewModel.openCitySearch()
+
+            viewModel.citySearchResults.test {
+                // 初始全部城市
+                val allCities = expectMostRecentItem()
+                assertEquals(5, allCities.size)
+
+                // 搜索「禅城」
+                viewModel.searchCity("禅城")
+                val result1 = expectMostRecentItem()
+                assertEquals(1, result1.size)
+                assertEquals("佛山市 禅城区", result1[0].name)
+
+                // 搜索拼音 nanhai
+                viewModel.searchCity("nanhai")
+                val result2 = expectMostRecentItem()
+                assertEquals(1, result2.size)
+                assertEquals("佛山市 南海区", result2[0].name)
+
+                // 搜索缩写 fs
+                viewModel.searchCity("fs")
+                val result3 = expectMostRecentItem()
+                assertEquals(5, result3.size)
+
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `selectCity 关闭搜索页并刷新指定城市天气`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val testCity = City(
+                name = "佛山市 顺德区",
+                pinyin = "shunde",
+                abbreviation = "sdq",
+                latitude = 22.8400,
+                longitude = 113.2800
+            )
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                cityRepository = LocalCityRepository()
+            )
+
+            viewModel.uiState.test {
+                // 初始状态
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                // 打开城市搜索
+                viewModel.openCitySearch()
+
+                // 选择城市：应触发天气刷新
+                viewModel.selectCity(testCity)
+
+                // 刷新中（Loading 态，因为初始就是 Loading，refreshWithCoordinates 不改变状态）
+                // 直接等 Success
+                val success = awaitItem() as WeatherUiState.Success
+                assertEquals("佛山市 顺德区", success.snapshot.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            // 验证搜索页已关闭
+            viewModel.showCitySearch.test {
+                assertFalse("selectCity 后应关闭搜索页", expectMostRecentItem())
+            }
+        }
+
+    @Test
+    fun `useGpsLocation 关闭搜索页并触发正常刷新`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.success(
+                        LocationResult(31.2304, 121.4737, 10f, 1_000_000L)
+                    )
+            }
+            val geocodingRepo = object : GeocodingRepository {
+                override suspend fun getLocationName(lat: Double, lon: Double): String? =
+                    "上海市 黄浦区"
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                geocodingRepository = geocodingRepo,
+                cityRepository = LocalCityRepository()
+            )
+
+            // 先打开搜索页
+            viewModel.openCitySearch()
+
+            viewModel.showCitySearch.test {
+                assertTrue(awaitItem()) // 打开状态
+
+                // 点击 GPS 定位
+                viewModel.useGpsLocation()
+
+                // 应关闭搜索页
+                assertFalse("useGpsLocation 后应关闭搜索页", awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `cityRepository 为 null 时城市搜索功能不崩溃`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = WeatherViewModel(
+                weatherRepository = MockWeatherRepository(simulateDelayMs = 0L)
+                // cityRepository 不传，默认为 null
+            )
+
+            // 这些操作不应抛异常
+            viewModel.openCitySearch()
+            viewModel.searchCity("测试")
+
+            // 打开搜索后 showCitySearch 应为 true（不受 cityRepository 影响）
+            viewModel.showCitySearch.test {
+                assertTrue("openCitySearch 后 showCitySearch 应为 true", expectMostRecentItem())
+            }
+
+            // 搜索结果为空列表（因为 cityRepository 为 null）
+            viewModel.citySearchResults.test {
+                assertTrue("cityRepository 为 null 时搜索结果为空", expectMostRecentItem().isEmpty())
+            }
+
+            // 关闭也不应崩溃
+            viewModel.closeCitySearch()
+            viewModel.showCitySearch.test {
+                assertFalse("closeCitySearch 后应为 false", expectMostRecentItem())
             }
         }
 }

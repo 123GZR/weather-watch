@@ -239,7 +239,65 @@ interface LocationRepository {
 
 **注意**：运行时权限检查在 Activity/Compose 层进行，Repository 只负责「有权限时的定位获取」。
 
-### 2.6 数据模型
+### 2.6 GeocodingRepository 接口
+
+**文件：** `data/GeocodingRepository.kt`
+
+```kotlin
+interface GeocodingRepository {
+    suspend fun getLocationName(lat: Double, lon: Double): String?
+}
+```
+
+反向地理编码接口，根据经纬度解析地址名称。
+
+### 2.7 AndroidGeocodingRepository
+
+**文件：** `data/AndroidGeocodingRepository.kt`
+
+基于 Android 原生 Geocoder 的反向地理编码实现。
+
+**技术栈：**
+- API 33+ 使用异步 listener 方式
+- API 33 以下使用阻塞式调用（IO 线程）
+- 失败时返回 null，由调用方决定降级策略
+
+### 2.8 CityRepository 接口
+
+**文件：** `data/CityRepository.kt`
+
+```kotlin
+interface CityRepository {
+    fun searchCities(query: String): List<City>
+    fun getAllCities(): List<City>
+}
+```
+
+城市搜索仓库接口，提供城市查询能力。
+
+### 2.9 LocalCityRepository
+
+**文件：** `data/LocalCityRepository.kt`
+
+本地城市库实现，当前仅包含佛山市五区。
+
+**城市库内容：**
+| 城市名 | 纬度 | 经度 |
+|--------|------|------|
+| 佛山市 禅城区 | 23.0218 | 113.1220 |
+| 佛山市 南海区 | 23.0323 | 113.1480 |
+| 佛山市 顺德区 | 22.8400 | 113.2800 |
+| 佛山市 三水区 | 23.1700 | 112.8900 |
+| 佛山市 高明区 | 22.9000 | 112.7900 |
+
+**搜索规则（任一满足即匹配，不区分大小写）：**
+1. 中文名称包含查询关键字（如「禅城」「佛山市」）
+2. 完整拼音包含查询关键字（如「chancheng」「nanhai」）
+3. 拼音首字母缩写包含查询关键字（如「fs」「ccq」「sdq」）
+
+**GPS 默认城市：** `GPS_DEFAULT_CITY` = 佛山市禅城区（点击 GPS 定位时的回退城市）
+
+### 2.10 数据模型
 
 **文件：** `data/model/Weather.kt`
 
@@ -323,6 +381,20 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 | accuracy | Float | 精度（米） |
 | epochSecond | Long | 定位时间戳（秒级） |
 
+#### City
+
+**文件：** `data/model/City.kt`
+
+城市数据模型，用于本地城市库搜索：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | String | 中文显示名（如「佛山市 禅城区」） |
+| pinyin | String | 完整拼音（无空格无音调） |
+| abbreviation | String | 拼音首字母缩写 |
+| latitude | Double | 纬度 |
+| longitude | Double | 经度 |
+
 ### 2.7 异常体系
 
 天气相关异常定义在 `MockWeatherRepository.kt` 文件底部，定位相关异常定义在 `FusedLocationRepository.kt` 文件底部：
@@ -357,10 +429,13 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | uiState | `StateFlow<WeatherUiState>` | UI 状态流（只读对外暴露） |
-| _uiState | `MutableStateFlow<WeatherUiState>` | 内部可变状态流 |
+| showCitySearch | `StateFlow<Boolean>` | 是否显示城市搜索页 |
+| citySearchResults | `StateFlow<List<City>>` | 城市搜索结果列表 |
 | refreshJob | `Job?` | 当前刷新任务，用于防重复刷新 |
 | weatherRepository | `WeatherRepository` | 天气数据源（构造注入，默认 Mock） |
-| locationRepository | `LocationRepository?` | 定位数据源（构造注入，可空，为 null 时回退硬编码坐标） |
+| locationRepository | `LocationRepository?` | 定位数据源（构造注入，可空） |
+| geocodingRepository | `GeocodingRepository?` | 地理编码数据源（构造注入，可空） |
+| cityRepository | `CityRepository?` | 城市搜索数据源（构造注入，可空） |
 
 **关键方法：**
 
@@ -369,19 +444,26 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
   - 有权限 → 调用 `refresh()`
   - 由 Activity/Compose 层调用，因为权限状态只能在宿主层获取
 
-- `refresh()`：发起刷新
+- `refresh()`：发起刷新（GPS 定位 → 取天气）
   - 已有任务进行中则直接返回（防抖）
   - 已有数据时保留旧快照、只翻转 `isRefreshing` 标记
   - 无数据或错误时进入 Loading 状态
   - **流程**：先定位 → 再用定位坐标取天气
     - `locationRepository` 不为 null 时调用 `getCurrentLocation()`
     - 定位失败 → `Error(GPS_UNAVAILABLE)`
-    - 定位成功 → 调用 `weatherRepository.fetchWeather(lat, lon)`
-    - `locationRepository` 为 null 时回退到硬编码坐标（兼容测试与未注入场景）
+    - 定位成功 → 并行获取位置名称 + 天气数据
+    - `locationRepository` 为 null 时回退到硬编码坐标
   - 通过 `viewModelScope` 启动协程，ViewModel 销毁时自动取消
 
+- `openCitySearch()`：打开城市搜索页，初始化搜索结果为全部城市
+- `closeCitySearch()`：关闭城市搜索页
+- `searchCity(query: String)`：根据关键字搜索城市（中文名/拼音/缩写）
+- `selectCity(city: City)`：选择城市，获取该城市天气并关闭搜索页
+- `useGpsLocation()`：使用 GPS 定位获取天气并关闭搜索页
+
 **注入方式：**
-- 构造函数参数注入，默认使用 `MockWeatherRepository()`，`locationRepository` 默认为 null
+- 构造函数参数注入，默认使用 `MockWeatherRepository()`
+- `locationRepository` / `geocodingRepository` / `cityRepository` 默认为 null（兼容测试）
 - 未来接入 DI 框架（如 Hilt）后可改为自动注入
 - 测试时可传入 Mock/Fake 实现
 
@@ -448,26 +530,36 @@ sealed interface WeatherUiState {
 
 **文件：** `ui/WeatherAppScreen.kt`
 
-应用的顶层 Composable，负责状态分发与页面路由：
+应用的顶层 Composable，负责状态分发、页面路由与城市搜索导航：
 
 ```kotlin
 @Composable
-fun WeatherAppScreen(viewModel: WeatherViewModel) {
+fun WeatherAppScreen(viewModel: WeatherViewModel, ...) {
     val state by viewModel.uiState.collectAsState()
-    val onRefresh = remember(viewModel) { { viewModel.refresh() } }
+    val showCitySearch by viewModel.showCitySearch.collectAsState()
+    val citySearchResults by viewModel.citySearchResults.collectAsState()
 
-    Box(...) {
-        when (val s = state) {
-            is WeatherUiState.Loading -> LoadingScreen()
-            is WeatherUiState.Success -> HomeScreen(...)
-            is WeatherUiState.Error -> ErrorScreen(...)
+    Box {
+        if (showCitySearch) {
+            CitySearchScreen(...) // 城市搜索页（覆盖层）
+        } else {
+            when (state) {     // 主界面
+                is Loading -> LoadingScreen()
+                is Success -> HomeScreen(...)
+                is Error -> ErrorScreen(...)
+            }
         }
     }
 }
 ```
 
+**导航逻辑：**
+- 城市搜索页以覆盖层形式展示在主界面之上
+- 点击 HomeScreen 顶部位置栏 → 打开城市搜索页
+- 选择城市 / 点击 GPS 定位 / 点击返回 → 关闭城市搜索页
+
 **性能要点：**
-- `onRefresh` 使用 `remember(viewModel)` 包裹，避免每次重组产生新 lambda
+- 所有回调使用 `remember(viewModel)` 包裹，避免每次重组产生新 lambda
 - `when` 表达式对 `sealed interface` 穷尽检查，无需 `else` 分支
 
 ### 4.2 HomeScreen（主屏）
@@ -499,7 +591,34 @@ rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState
 - `RefreshFooter`：刷新按钮 + 更新时间
 - `SummaryCell`：摘要单元格
 
-### 4.3 LoadingScreen / ErrorScreen
+### 4.3 CitySearchScreen（城市搜索页）
+
+**文件：** `ui/screens/CitySearchScreen.kt`
+
+城市搜索/选择界面，以覆盖层形式展示在主界面之上。
+
+**组成部分：**
+1. **顶部标题栏**：返回按钮 + 「选择城市」标题
+2. **搜索输入框**：支持中文/拼音/首字母搜索，带清空按钮
+3. **GPS 定位项**：高亮显示，点击后使用 GPS 定位
+4. **城市列表**：匹配搜索结果的城市 Chip 列表
+5. **无结果提示**：搜索无匹配时显示
+
+**交互：**
+- 进入页面自动聚焦搜索框
+- 搜索框输入实时过滤城市列表
+- 点击城市 Chip → 选择该城市并获取天气 → 关闭搜索页
+- 点击 GPS 定位 Chip → 走 GPS 定位流程 → 关闭搜索页
+- 点击返回按钮 → 关闭搜索页
+- 旋转表圈控制列表滚动（snap 行为）
+
+**列表实现：** `ScalingLazyColumn` + `RotaryScrollableDefaults.snapBehavior`
+
+**性能优化：**
+- 每个 item 都有稳定 `key`（如 `"city-${city.name}"`）
+- 搜索输入框状态由 Composable 内部管理（`remember`），不触发全页重组
+
+### 4.4 LoadingScreen / ErrorScreen
 
 **文件：** `ui/screens/LoadingScreen.kt`、`ui/screens/ErrorScreen.kt`
 

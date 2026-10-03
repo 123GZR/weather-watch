@@ -2,6 +2,7 @@ package com.galaxy.weatherwatch.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.galaxy.weatherwatch.data.CityRepository
 import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.GpsUnavailableException
 import com.galaxy.weatherwatch.data.LocationRepository
@@ -10,6 +11,7 @@ import com.galaxy.weatherwatch.data.MockWeatherRepository
 import com.galaxy.weatherwatch.data.NoNetworkException
 import com.galaxy.weatherwatch.data.TimeoutException
 import com.galaxy.weatherwatch.data.WeatherRepository
+import com.galaxy.weatherwatch.data.model.City
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -22,11 +24,20 @@ import kotlinx.coroutines.launch
 class WeatherViewModel(
     private val weatherRepository: WeatherRepository = MockWeatherRepository(),
     private val locationRepository: LocationRepository? = null,
-    private val geocodingRepository: GeocodingRepository? = null
+    private val geocodingRepository: GeocodingRepository? = null,
+    private val cityRepository: CityRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
     val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+
+    /** 是否显示城市搜索页 */
+    private val _showCitySearch = MutableStateFlow(false)
+    val showCitySearch: StateFlow<Boolean> = _showCitySearch.asStateFlow()
+
+    /** 城市搜索结果列表 */
+    private val _citySearchResults = MutableStateFlow<List<City>>(emptyList())
+    val citySearchResults: StateFlow<List<City>> = _citySearchResults.asStateFlow()
 
     private var refreshJob: Job? = null
 
@@ -80,6 +91,75 @@ class WeatherViewModel(
             }
             val weatherResult = weatherRepository.fetchWeather(lat, lon)
             val locationName = locationNameDeferred.await()
+
+            _uiState.value = weatherResult.fold(
+                onSuccess = { snapshot ->
+                    WeatherUiState.Success(
+                        snapshot.copy(locationName = locationName)
+                    )
+                },
+                onFailure = { WeatherUiState.Error(it.toErrorType(), isRefreshing = false) }
+            )
+        }
+    }
+
+    // ---- 城市搜索相关 ----
+
+    /** 打开城市搜索页，初始化搜索结果为全部城市 */
+    fun openCitySearch() {
+        cityRepository?.let { repo ->
+            _citySearchResults.value = repo.getAllCities()
+        }
+        _showCitySearch.value = true
+    }
+
+    /** 关闭城市搜索页 */
+    fun closeCitySearch() {
+        _showCitySearch.value = false
+    }
+
+    /**
+     * 根据关键字搜索城市。
+     * 支持中文名、全拼、拼音首字母缩写匹配。
+     */
+    fun searchCity(query: String) {
+        cityRepository?.let { repo ->
+            _citySearchResults.value = repo.searchCities(query)
+        }
+    }
+
+    /**
+     * 选择指定城市并获取该城市天气，然后关闭搜索页。
+     */
+    fun selectCity(city: City) {
+        _showCitySearch.value = false
+        refreshWithCoordinates(city.latitude, city.longitude, city.name)
+    }
+
+    /**
+     * 使用 GPS 定位获取天气，然后关闭搜索页。
+     * 若定位不可用则走正常 refresh 流程（含错误处理）。
+     */
+    fun useGpsLocation() {
+        _showCitySearch.value = false
+        refresh()
+    }
+
+    /**
+     * 使用指定坐标和位置名称刷新天气，跳过定位步骤。
+     * 用于手动选择城市时的天气获取。
+     */
+    private fun refreshWithCoordinates(lat: Double, lon: Double, locationName: String) {
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch {
+            _uiState.update { previous ->
+                when (previous) {
+                    is WeatherUiState.Success -> previous.copy(isRefreshing = true)
+                    else -> WeatherUiState.Loading
+                }
+            }
+
+            val weatherResult = weatherRepository.fetchWeather(lat, lon)
 
             _uiState.value = weatherResult.fold(
                 onSuccess = { snapshot ->
