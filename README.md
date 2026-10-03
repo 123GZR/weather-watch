@@ -80,12 +80,13 @@ app/                                    # 主应用模块
     │   │   ├── data/                   # 数据层
     │   │   │   ├── model/
     │   │   │   │   ├── Weather.kt      # 天气数据模型（Immutable）
-    │   │   │   │   ├── WeatherIcon.kt  # OWM 图标枚举
+    │   │   │   │   ├── WeatherIcon.kt  # 天气图标枚举（OWM / 和风映射）
     │   │   │   │   ├── LocationResult.kt # 定位结果模型
     │   │   │   │   └── City.kt         # 城市数据模型
     │   │   │   ├── WeatherRepository.kt       # 天气仓库接口
-    │   │   │   ├── MockWeatherRepository.kt   # 本地假数据（当前使用）
-    │   │   │   ├── OpenWeatherRepository.kt   # One Call API 3.0 实现
+    │   │   │   ├── MockWeatherRepository.kt   # 本地假数据
+    │   │   │   ├── QWeatherRepository.kt      # 和风天气实现（当前默认）
+    │   │   │   ├── OpenWeatherRepository.kt   # OWM One Call 3.0 实现（保留参考）
     │   │   │   ├── LocationRepository.kt      # 定位仓库接口
     │   │   │   ├── FusedLocationRepository.kt # GPS 定位实现
     │   │   │   ├── GeocodingRepository.kt     # 地理编码接口
@@ -144,10 +145,11 @@ baselineprofile/                        # Baseline Profile 生成模块
                    ▼
 ┌─────────────────────────────────────────────┐
 │               Data Layer                     │
-│  MockWeatherRepository / OpenWeatherRepository│
+│  MockWeatherRepository / QWeatherRepository   │
 │     (数据获取、解析、异常封装为 Result)       │
 └─────────────────────────────────────────────┘
 ```
+（当前默认数据源为和风天气 QWeatherRepository；OWM OpenWeatherRepository 保留作参考。）
 
 **数据流方向：** 单向数据流
 - Repository → ViewModel（`Result<WeatherSnapshot>`）
@@ -216,13 +218,21 @@ baselineprofile/                        # Baseline Profile 生成模块
 
 ## 数据源
 
-OpenWeatherMap One Call API 3.0（暂未接入 Key，当前用 Mock 数据）。
+和风天气（QWeather）实时天气 API（当前默认，M3 已完成接入）。
 
-- 接口文档：https://openweathermap.org/api/one-call-3
-- 实现类：`OpenWeatherRepository`
-- 当前默认：`MockWeatherRepository`（本地假数据，便于 UI 调试）
+- 接口文档：https://dev.qweather.com/docs/api/
+- 实现类：`QWeatherRepository`（并行请求 now / 24h / 3d 三个接口）
+- 凭据：在 `local.properties`（已被 .gitignore 排除，不会入库）中配置：
+  ```
+  qweather.apiKey=你的和风天气 Key
+  qweather.apiHost=你的专属 API Host
+  ```
+  > API Host 在 console.qweather.com → 控制台 → 设置 中查看；2026 年起和风天气已停用公共域名
+  > `api.qweather.com` / `devapi.qweather.com`，必须使用账号专属 Host（形如 `h2a9cf3mhs.xy.qweatherapi.com`）。
+- 凭据缺失时自动回退 `MockWeatherRepository`（本地假数据），保证项目开箱可跑
+- 历史实现：`OpenWeatherRepository`（OWM One Call API 3.0，保留作参考）
 
-> 接入真实 API 后，在 `WeatherViewModel` 构造函数中切换 Repository 实现即可。
+> 切换数据源：只需修改 `MainActivity` 中 `weatherRepository` 的注入，`WeatherViewModel` 只依赖接口。
 
 ---
 
@@ -232,7 +242,7 @@ OpenWeatherMap One Call API 3.0（暂未接入 Key，当前用 Mock 数据）。
 - [x] M1.5 性能优化基线（Immutable / Strong Skipping / Baseline Profile）
 - [x] M2 GPS 定位与权限
 - [x] M2.5 手动输入城市（本地佛山五区城市库 + 搜索）
-- [ ] M3 实时天气主屏（接入 OWM API）
+- [x] M3 实时天气主屏（接入和风天气 API）
 - [ ] M4 表圈逐时预报校准
 - [ ] M5 手动刷新 + 错误处理
 - [ ] M6 真机验收

@@ -19,6 +19,7 @@
   - [2.4 LocationRepository 接口](#24-locationrepository-接口)
   - [2.5 FusedLocationRepository](#25-fusedlocationrepository)
   - [2.6 数据模型](#26-数据模型)
+  - [2.11 QWeatherRepository（和风天气，当前默认）](#211-qweatherrepository和风天气当前默认数据源)
   - [2.7 异常体系](#27-异常体系)
 - [3. ViewModel 层详解](#3-viewmodel-层详解)
   - [3.1 WeatherViewModel](#31-weatherviewmodel)
@@ -86,8 +87,8 @@
 ┌───────────────────────────────────────────────────────┐
 │                    Data Layer                          │
 │  ┌──────────────────────┐  ┌──────────────────────┐  │
-│  │ MockWeatherRepository│  │ OpenWeatherRepository │  │
-│  │ (本地假数据)          │  │ (OWM API)            │  │
+│  │ MockWeatherRepository│  │ QWeatherRepository   │  │
+│  │ (本地假数据)          │  │ (和风天气 API, 默认) │  │
 │  └──────────┬───────────┘  └──────────┬───────────┘  │
 │             │                         │               │
 │             └───────────┬─────────────┘               │
@@ -199,9 +200,7 @@ OpenWeatherMap One Call API 3.0 的实现。
 - `OwmCurrent` / `OwmHourly` / `OwmDaily` / `OwmWeather`：各字段映射
 - 通过 `toSnapshot()` 方法转换为业务模型 `WeatherSnapshot`
 
-**待实现：**
-- API Key 注入（当前需手动传入）
-- 里程碑 M3 完成后启用
+> **状态：** 已被 [2.11 QWeatherRepository](#211-qweatherrepository和风天气当前默认数据源)（和风天气）取代为默认数据源，本实现保留作参考。
 
 ### 2.4 LocationRepository 接口
 
@@ -394,6 +393,34 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 | abbreviation | String | 拼音首字母缩写 |
 | latitude | Double | 纬度 |
 | longitude | Double | 经度 |
+
+### 2.11 QWeatherRepository（和风天气，当前默认数据源）
+
+**文件：** `data/QWeatherRepository.kt`
+
+和风天气（QWeather）实现，当前应用的默认天气数据源。一次 `fetchWeather` 并行请求三个接口：
+
+| 接口 | 用途 | 映射到 |
+|------|------|--------|
+| `/v7/weather/now` | 实时天气 | `CurrentWeather`（temp / feelsLike / icon / text） |
+| `/v7/weather/24h` | 逐时预报 | 前 12 条 `HourlyForecast`（fxTime / temp / icon / pop） |
+| `/v7/weather/3d` | 天级预报 | `DailySummary`（tempMin / tempMax） |
+
+**与 OWM 实现的关键差异：**
+
+| 差异点 | 说明 |
+|--------|------|
+| 坐标参数顺序 | `location=经度,纬度`（lon,lat），与 OWM 相反 |
+| 数值类型 | 所有数值均为字符串（如 `"31"`），映射时转 `Double` |
+| 状态码 | 业务码在响应体 `code` 字段，`"200"` 才视为成功；HTTP 非 200 抛 `ApiException` |
+| 图标码 | QWeather 数字码（100~104 白天 / 150~154 夜间 / 300+ 雨雪雷雾），见 `WeatherIcon.fromQWeatherCode()` |
+| 降水概率 | `pop` 为百分比字符串（`"32"` = 32%），转 0.0~1.0；3d 接口无 pop，今日降水概率取当日逐时 pop 最大值 |
+| 域名 | 使用控制台分配的专属 API Host（2026 年起公共域名 `api.qweather.com` / `devapi.qweather.com` 已停用） |
+
+**凭据注入：**
+- `local.properties`（已被 .gitignore 排除）配置 `qweather.apiKey` / `qweather.apiHost`
+- `app/build.gradle.kts` 通过 `buildConfigField` 注入 `BuildConfig.QWEATHER_API_KEY` / `QWEATHER_API_HOST`
+- `MainActivity` 构造 `QWeatherRepository`；凭据缺失时回退 `MockWeatherRepository`，保证项目开箱可跑
 
 ### 2.7 异常体系
 
@@ -827,10 +854,11 @@ test/kotlin/com/galaxy/weatherwatch/
 
 ## 10. 常见问题
 
-### Q: 如何切换到真实天气 API？
+### Q: 如何切换数据源？
 
-在 `WeatherViewModel` 构造函数中，将默认的 `MockWeatherRepository()` 替换为 `OpenWeatherRepository(apiKey = "你的key")`。
-未来可通过 DI 框架（如 Hilt）统一管理。
+当前默认数据源已是和风天气 `QWeatherRepository`（凭据在 `local.properties`，经 BuildConfig 注入，见 2.11）。
+如需切换回本地假数据，将 `MainActivity` 中 `weatherRepository` 改为 `MockWeatherRepository()` 即可；
+`WeatherViewModel` 只依赖 `WeatherRepository` 接口，数据层替换无需改动上层。未来可通过 DI 框架（如 Hilt）统一管理。
 
 ### Q: 如何添加新的天气状态？
 

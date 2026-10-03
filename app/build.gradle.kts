@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+}
+
+// 和风天气凭据：从 local.properties 读取（该文件已被 .gitignore 排除，避免密钥入库）。
+// 缺失时注入空字符串，MainActivity 会回退到 MockWeatherRepository。
+val qweatherProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -20,6 +31,18 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // 和风天气 Key / API Host 注入 BuildConfig，供 MainActivity 构造 QWeatherRepository
+        buildConfigField(
+            "String",
+            "QWEATHER_API_KEY",
+            "\"${qweatherProperties.getProperty("qweather.apiKey", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "QWEATHER_API_HOST",
+            "\"${qweatherProperties.getProperty("qweather.apiHost", "")}\""
+        )
     }
 
     buildTypes {
@@ -47,6 +70,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
