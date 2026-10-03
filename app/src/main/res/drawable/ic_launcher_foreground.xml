@@ -4,15 +4,24 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 太阳 -->
+    <!-- 太阳（仅露出左上弧形，右下被云遮挡） -->
     <path
-        android:fillColor="#FFFDE293"
-        android:pathData="M54,32 m-14,0 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0" />
-    <!-- 云 -->
+        android:fillColor="#FFEAC89A"
+        android:pathData="M38,44 m-17,0 a17,17 0 1,0 34,0 a17,17 0 1,0 -34,0" />
+    <!-- 云：左鼓包 -->
     <path
-        android:fillColor="#FFAECBFA"
-        android:pathData="M38,72 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+        android:fillColor="#FFE0E6ED"
+        android:pathData="M38,70 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
+    <!-- 云：中间主鼓包 -->
     <path
-        android:fillColor="#FF8AB4F8"
-        android:pathData="M58,76 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+        android:fillColor="#FFE0E6ED"
+        android:pathData="M55,63 m-14,0 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0" />
+    <!-- 云：右鼓包 -->
+    <path
+        android:fillColor="#FFE0E6ED"
+        android:pathData="M72,70 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+    <!-- 云：底部封底 -->
+    <path
+        android:fillColor="#FFE0E6ED"
+        android:pathData="M27,70 L27,76 L82,76 L82,70 Z" />
 </vector>
