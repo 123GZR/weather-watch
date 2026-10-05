@@ -18,9 +18,13 @@
   - [2.3 OpenWeatherRepository](#23-openweatherrepository)
   - [2.4 LocationRepository 接口](#24-locationrepository-接口)
   - [2.5 FusedLocationRepository](#25-fusedlocationrepository)
-  - [2.6 数据模型](#26-数据模型)
+  - [2.6 GeocodingRepository 接口](#26-geocodingrepository-接口)
+  - [2.7 AndroidGeocodingRepository](#27-androidgeocodingrepository)
+  - [2.8 CityRepository 接口](#28-cityrepository-接口)
+  - [2.9 LocalCityRepository](#29-localcityrepository)
+  - [2.10 数据模型](#210-数据模型)
   - [2.11 QWeatherRepository（和风天气，当前默认）](#211-qweatherrepository和风天气当前默认数据源)
-  - [2.7 异常体系](#27-异常体系)
+  - [2.12 异常体系](#212-异常体系)
 - [3. ViewModel 层详解](#3-viewmodel-层详解)
   - [3.1 WeatherViewModel](#31-weatherviewmodel)
   - [3.2 WeatherUiState](#32-weatheruistate)
@@ -422,7 +426,7 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 - `app/build.gradle.kts` 通过 `buildConfigField` 注入 `BuildConfig.QWEATHER_API_KEY` / `QWEATHER_API_HOST`
 - `MainActivity` 构造 `QWeatherRepository`；凭据缺失时回退 `MockWeatherRepository`，保证项目开箱可跑
 
-### 2.7 异常体系
+### 2.12 异常体系
 
 天气相关异常定义在 `MockWeatherRepository.kt` 文件底部，定位相关异常定义在 `FusedLocationRepository.kt` 文件底部：
 
