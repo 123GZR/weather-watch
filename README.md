@@ -178,25 +178,50 @@ baselineprofile/                        # Baseline Profile 生成模块
 
 ## 性能优化（P0，已完成）
 
+**组合/重组层**
 - 数据模型加 `@Immutable`，Compose 编译器可跳过未变化子树的重组
 - `uiState`/`isRefreshing` 合并为单一状态流，一次刷新只触发一轮重组
 - 列表 item 使用稳定 `key`，刷新时只重组数据变化的行
+- Compose strong skipping 由 Kotlin 2.0.20 编译器默认开启（无需显式配置）
+
+**绘制层**
 - 天气图标由 emoji 改为 Canvas 矢量绘制，消除手表字体回退扫描卡顿
-- 开启 Compose strong skipping（`composeCompiler.enableStrongSkipping`）
-- 集成 Baseline Profile（profileinstaller + `:baselineprofile` 生成模块）
+- 图标使用 `drawWithCache` 缓存绘制指令（缩放换算、贝塞尔路径在组合期构建一次），
+  滚动逐时预报时帧绘制直接复用，避免每帧重复计算变换矩阵
+
+**启动层**
+- 主题声明深色 `windowBackground`，冷启动到首帧期间窗口不白屏闪烁
+- 移除 Activity 中冗余的重复 `setTheme` 调用
+
+**网络/数据层**
+- OkHttp 收紧超时（连接 5s / 读取 10s / 整体 15s）并共享客户端连接池，网络异常更快暴露
+- `Json` 反序列化器提为共享单例，避免重复创建配置对象
+- 时间格式化器静态共享，刷新/滚动时不重复创建 `DateTimeFormatter`
+
+**构建/底层**
+- 集成 Baseline Profile：app 模块应用 `androidx.baselineprofile` 插件并声明
+  `baselineProfile(project(":baselineprofile"))`，release 变体自动产出
+  `assets/dexopt/baseline.prof`（dex 布局优化），设备端生成的基线配置可打包进 APK
+- release 开启 R8 混淆 + 资源压缩（APK 约 2.5MB）
+- 显式提升 `fragment-ktx` 1.8.5（修复 play-services 传递依赖 fragment 1.1.0 导致的
+  `registerForActivityResult` lint 错误，保证 release 构建可通过）
 
 ---
 
 ## 生成 Baseline Profile（可选，建议做一次）
 
-手表开启 ADB/无线调试并连接电脑后执行，生成结果会自动打包进 APK：
+release 构建已自动包含 AGP 生成的 dex 布局优化 profile（`assets/dexopt/baseline.prof`）。
+如需进一步预编译**设备端实测热路径**（首帧 + 列表滚动），按以下步骤生成：
+
+1. 手表开启 ADB/无线调试并连接电脑
+2. 执行（生成结果经 `baselineProfile` 依赖自动打包进 APK）：
 
 ```bash
 ./gradlew :baselineprofile:generateBaselineProfile
 ```
 
-生成一次后重新 Build APK 并安装，首次启动时 profileinstaller 会预编译热路径，
-进一步提升首帧与滚动流畅度；未生成时不影响功能，只是暂不享受基线优化。
+3. 重新 Build APK 并安装，首次启动时 profileinstaller 会预编译热路径，
+   进一步提升首帧与滚动流畅度；未生成时不影响功能，只是暂不享受设备基线优化。
 
 ---
 

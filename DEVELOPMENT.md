@@ -707,16 +707,46 @@ Canvas 矢量绘制的天气图标组件。
 
 | 优化手段 | 说明 | 位置 |
 |---------|------|------|
-| `@Immutable` 数据类 | Compose 编译器识别为稳定类型，内容未变则跳过重组 | Weather.kt |
+| `@Immutable` 数据类 | Compose 编译器识别为稳定类型，内容未变则跳过重组 | Weather.kt / City.kt |
 | Strong Skipping | Kotlin 2.0 Compose 编译器默认开启，稳定参数的 Composable 可跳过重组 | build.gradle.kts |
 | 稳定 lambda | `remember` 包裹回调，避免每次重组产生新实例 | WeatherAppScreen.kt |
 | 单一状态流 | 合并 `uiState` 与 `isRefreshing`，一次刷新只触发一轮重组 | WeatherViewModel.kt |
+| 静态格式化器 | `DateTimeFormatter` 静态共享，刷新/滚动不重复创建 | HomeScreen.kt |
 
 **开发时注意：**
 - 新增数据类必须加 `@Immutable`
 - Composable 函数的参数应尽量使用稳定类型
 - 不要在 Composable 中直接创建对象（用 `remember` 包裹）
 - lambda 回调如果传给子组件，用 `remember` 包裹
+
+### 5.1.1 绘制缓存
+
+**已实施的优化：**
+
+| 优化手段 | 说明 | 位置 |
+|---------|------|------|
+| `drawWithCache` | 图标缩放换算、贝塞尔路径在组合期构建并缓存，帧绘制直接复用，避免每帧重建变换矩阵 | WeatherIcon.kt / LocationPinIcon.kt |
+| 路径预构建 | `Path.combine`（月牙）与贝塞尔 Path 在 `remember` 中构建一次 | 同上 |
+
+**开发时注意：**
+- 新增矢量图标优先用 `drawWithCache` + `remember` 缓存路径，不要用 emoji（字体回退扫描卡顿）
+- 绘制参数（颜色、尺寸换算）放进缓存块，避免在每帧绘制 lambda 中重复计算
+
+### 5.1.2 冷启动
+
+**已实施的优化：**
+
+| 优化手段 | 说明 | 位置 |
+|---------|------|------|
+| 深色 `windowBackground` | 冷启动到首帧期间窗口显示深色背景，不白屏闪烁 | themes.xml |
+| 移除冗余 `setTheme` | 主题已在 manifest 声明，Activity 不再重复设置 | MainActivity.kt |
+
+### 5.1.3 网络层
+
+| 优化手段 | 说明 | 位置 |
+|---------|------|------|
+| 共享 OkHttpClient | 连接池跨刷新复用，收紧超时（连接 5s/读取 10s/整体 15s），网络异常更快暴露 | QWeatherRepository.kt |
+| 共享 Json 实例 | 反序列化器单例复用，避免重复创建配置对象 | 同上 |
 
 ### 5.2 列表性能
 
@@ -737,14 +767,18 @@ Canvas 矢量绘制的天气图标组件。
 
 **作用：** 预编译应用热路径，提升首次启动和滚动流畅度
 
-**生成模块：** `:baselineprofile`
-**集成方式：** `androidx.profileinstaller`
+**生成模块：** `:baselineprofile`（`com.android.test` 类型）
+**打包配置：** app 模块应用 `androidx.baselineprofile` 插件并声明
+`baselineProfile(project(":baselineprofile"))` 依赖；release 变体构建时
+AGP 自动生成 dex 布局优化 profile（`assets/dexopt/baseline.prof`）
+**安装器：** `androidx.profileinstaller`（manifest 自动合并
+`ProfileInstallerInitializer`，首次启动安装基线配置）
 **生成命令：** `./gradlew :baselineprofile:generateBaselineProfile`
 
 **注意：**
 - 生成需要连接手表（或模拟器）并开启 ADB
 - 生成一次即可，重新 Build APK 会自动打包
-- 未生成不影响功能，只是没有基线优化
+- 未生成不影响功能，只是没有设备实测热路径的基线优化（release 仍含 AGP 自动生成的 dex 布局 profile）
 
 ---
 
