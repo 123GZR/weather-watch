@@ -3,6 +3,7 @@ package com.galaxy.weatherwatch.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.galaxy.weatherwatch.data.CityRepository
+import com.galaxy.weatherwatch.data.CitySelectionRepository
 import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.GpsUnavailableException
 import com.galaxy.weatherwatch.data.LocationRepository
@@ -15,6 +16,7 @@ import com.galaxy.weatherwatch.data.model.City
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +27,8 @@ class WeatherViewModel(
     private val weatherRepository: WeatherRepository = MockWeatherRepository(),
     private val locationRepository: LocationRepository? = null,
     private val geocodingRepository: GeocodingRepository? = null,
-    private val cityRepository: CityRepository? = null
+    private val cityRepository: CityRepository? = null,
+    private val citySelectionRepository: CitySelectionRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
@@ -76,47 +79,95 @@ class WeatherViewModel(
 
             // 第一步：获取位置
             val locationResult = locationRepository?.getCurrentLocation()
-            val (lat, lon) = if (locationResult != null) {
+            if (locationResult != null) {
                 locationResult.fold(
-                    onSuccess = { it.latitude to it.longitude },
-                    onFailure = {
-                        // 定位失败：展示最后一次已知位置（可能为空）
-                        _uiState.value = WeatherUiState.Error(
-                            type = it.toErrorType(),
-                            locationName = lastLocationName
-                        )
-                        return@launch
+                    onSuccess = { location ->
+                        loadWeatherByGps(location.latitude, location.longitude)
+                    },
+                    onFailure = { throwable ->
+                        // 定位失败：若存在记忆城市，回退到最近一次手动选择的城市取天气（成功态），
+                        // 避免手表室内无 GPS 信号时直接进入错误页；无记忆城市时维持错误态。
+                        val rememberedCity = citySelectionRepository?.getSelectedCity()
+                        if (rememberedCity != null) {
+                            applyWeatherResult(
+                                lat = rememberedCity.latitude,
+                                lon = rememberedCity.longitude,
+                                locationName = rememberedCity.name
+                            )
+                        } else {
+                            _uiState.value = WeatherUiState.Error(
+                                type = throwable.toErrorType(),
+                                locationName = lastLocationName
+                            )
+                        }
                     }
                 )
             } else {
-                // locationRepository 为 null 时回退到硬编码坐标（兼容测试与未注入场景）
-                FALLBACK_LAT to FALLBACK_LON
-            }
-
-            // 第二步：并行获取位置名称 + 天气数据
-            val locationNameDeferred = async {
-                resolveLocationName(lat, lon)
-            }
-            val weatherResult = weatherRepository.fetchWeather(lat, lon)
-            val locationName = locationNameDeferred.await()
-            // 位置已解析成功（GPS 可用），记录下来供失败页展示
-            lastLocationName = locationName
-
-            _uiState.value = weatherResult.fold(
-                onSuccess = { snapshot ->
-                    WeatherUiState.Success(
-                        snapshot.copy(locationName = locationName)
+                // locationRepository 为 null（未注入/测试场景）：同样优先使用记忆城市，
+                // 否则回退到硬编码坐标。
+                val rememberedCity = citySelectionRepository?.getSelectedCity()
+                if (rememberedCity != null) {
+                    applyWeatherResult(
+                        lat = rememberedCity.latitude,
+                        lon = rememberedCity.longitude,
+                        locationName = rememberedCity.name
                     )
-                },
-                onFailure = {
-                    WeatherUiState.Error(
-                        type = it.toErrorType(),
-                        isRefreshing = false,
-                        locationName = locationName
-                    )
+                } else {
+                    loadWeatherByGps(FALLBACK_LAT, FALLBACK_LON)
                 }
-            )
+            }
         }
+    }
+
+    /**
+     * GPS/坐标路径：并行解析位置名称 + 获取天气，位置名称解析失败时降级为经纬度。
+     */
+    private suspend fun loadWeatherByGps(lat: Double, lon: Double) {
+        // coroutineScope 保证内部 async 与外层协程同生命周期，名称解析与天气请求并行执行
+        val (weatherResult, locationName) = coroutineScope {
+            val locationNameDeferred = async { resolveLocationName(lat, lon) }
+            val result = weatherRepository.fetchWeather(lat, lon)
+            result to locationNameDeferred.await()
+        }
+        lastLocationName = locationName
+        _uiState.value = weatherResult.fold(
+            onSuccess = { snapshot ->
+                WeatherUiState.Success(
+                    snapshot.copy(locationName = locationName)
+                )
+            },
+            onFailure = {
+                WeatherUiState.Error(
+                    type = it.toErrorType(),
+                    isRefreshing = false,
+                    locationName = locationName
+                )
+            }
+        )
+    }
+
+    /**
+     * 使用已知位置名称获取天气并更新状态。
+     * 供「手动选择城市」与「定位失败回退记忆城市」两条路径共用。
+     */
+    private suspend fun applyWeatherResult(lat: Double, lon: Double, locationName: String) {
+        val weatherResult = weatherRepository.fetchWeather(lat, lon)
+        lastLocationName = locationName
+
+        _uiState.value = weatherResult.fold(
+            onSuccess = { snapshot ->
+                WeatherUiState.Success(
+                    snapshot.copy(locationName = locationName)
+                )
+            },
+            onFailure = {
+                WeatherUiState.Error(
+                    type = it.toErrorType(),
+                    isRefreshing = false,
+                    locationName = locationName
+                )
+            }
+        )
     }
 
     // ---- 城市搜索相关 ----
@@ -146,9 +197,11 @@ class WeatherViewModel(
 
     /**
      * 选择指定城市并获取该城市天气，然后关闭搜索页。
+     * 同时把该城市记忆到本地，供后续定位失败时回退使用。
      */
     fun selectCity(city: City) {
         _showCitySearch.value = false
+        citySelectionRepository?.saveSelectedCity(city)
         refreshWithCoordinates(city.latitude, city.longitude, city.name)
     }
 
@@ -174,24 +227,7 @@ class WeatherViewModel(
                     else -> WeatherUiState.Loading
                 }
             }
-
-            val weatherResult = weatherRepository.fetchWeather(lat, lon)
-            lastLocationName = locationName
-
-            _uiState.value = weatherResult.fold(
-                onSuccess = { snapshot ->
-                    WeatherUiState.Success(
-                        snapshot.copy(locationName = locationName)
-                    )
-                },
-                onFailure = {
-                    WeatherUiState.Error(
-                        type = it.toErrorType(),
-                        isRefreshing = false,
-                        locationName = locationName
-                    )
-                }
-            )
+            applyWeatherResult(lat, lon, locationName)
         }
     }
 

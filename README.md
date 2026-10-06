@@ -92,7 +92,9 @@ app/                                    # 主应用模块
     │   │   │   ├── GeocodingRepository.kt     # 地理编码接口
     │   │   │   ├── AndroidGeocodingRepository.kt # 反向地理编码实现
     │   │   │   ├── CityRepository.kt          # 城市搜索仓库接口
-    │   │   │   └── LocalCityRepository.kt     # 本地城市库（佛山五区）
+    │   │   │   ├── LocalCityRepository.kt     # 本地城市库（佛山五区）
+    │   │   │   ├── CitySelectionRepository.kt # 城市选择记忆仓库接口
+    │   │   │   └── SharedPreferencesCitySelectionRepository.kt # 记忆城市持久化（SharedPreferences）
     │   │   └── ui/                     # UI 层
     │   │       ├── WeatherAppScreen.kt # 顶层路由（状态分发/城市搜索导航）
     │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态
@@ -113,6 +115,7 @@ app/                                    # 主应用模块
         ├── util/MainDispatcherRule.kt  # 协程测试调度器规则
         ├── data/MockWeatherRepositoryTest.kt
         ├── data/OpenWeatherRepositoryTest.kt
+        ├── data/SharedPreferencesCitySelectionRepositoryTest.kt
         ├── data/model/WeatherIconTest.kt
         ├── ui/WeatherViewModelTest.kt
         ├── ui/components/WeatherIconGlyphTest.kt
@@ -166,6 +169,7 @@ baselineprofile/                        # Baseline Profile 生成模块
 - 🌀 **表圈交互**：旋转表圈控制逐时预报列表滚动（snap 行为）
 - 🔍 **手动城市搜索**：支持中文名、拼音、首字母缩写搜索，本地佛山五区城市库
 - 📍 **GPS 定位 + 手动切换**：自动 GPS 定位，也可手动选择城市
+- 🧠 **记忆城市回退**：记住最近一次手动选择的城市，GPS 定位失败时自动回退到该城市取天气，避免手表室内无信号时进入错误页
 - 🔧 **失败页位置恢复**：错误页展示当前位置，可点击顶部位置条或「手动选择城市」按钮，按所选位置重新获取天气
 - 🎨 **Canvas 矢量图标**：纯绘制天气图标，无字体依赖，性能更好
 - ⚡ **Compose Strong Skipping**：Kotlin 2.0 编译器默认开启，跳过稳定参数的重组
@@ -268,6 +272,7 @@ release 构建已自动包含 AGP 生成的 dex 布局优化 profile（`assets/d
 - [x] M1.5 性能优化基线（Immutable / Strong Skipping / Baseline Profile）
 - [x] M2 GPS 定位与权限
 - [x] M2.5 手动输入城市（本地佛山五区城市库 + 搜索）
+- [x] M2.6 记忆城市回退（记住最近选择城市，定位失败自动回退）
 - [x] M3 实时天气主屏（接入和风天气 API）
 - [ ] M4 表圈逐时预报校准
 - [ ] M5 手动刷新 + 错误处理

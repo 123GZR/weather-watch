@@ -16,6 +16,7 @@ import com.galaxy.weatherwatch.data.FusedLocationRepository
 import com.galaxy.weatherwatch.data.LocalCityRepository
 import com.galaxy.weatherwatch.data.MockWeatherRepository
 import com.galaxy.weatherwatch.data.QWeatherRepository
+import com.galaxy.weatherwatch.data.SharedPreferencesCitySelectionRepository
 import com.galaxy.weatherwatch.data.WeatherRepository
 import com.galaxy.weatherwatch.ui.WeatherAppScreen
 import com.galaxy.weatherwatch.ui.WeatherViewModel
@@ -48,7 +49,11 @@ class MainActivity : ComponentActivity() {
                 LocationServices.getFusedLocationProviderClient(this)
             ),
             geocodingRepository = AndroidGeocodingRepository(this),
-            cityRepository = LocalCityRepository()
+            cityRepository = LocalCityRepository(),
+            // 记忆最近一次手动选择的城市，GPS 定位失败时回退到该城市
+            citySelectionRepository = SharedPreferencesCitySelectionRepository(
+                getSharedPreferences(CITY_SELECTION_PREFS, MODE_PRIVATE)
+            )
         )
     }
 
@@ -91,5 +96,10 @@ class MainActivity : ComponentActivity() {
             data = Uri.fromParts("package", packageName, null)
         }
         startActivity(intent)
+    }
+
+    companion object {
+        /** 记忆城市 SharedPreferences 文件名 */
+        private const val CITY_SELECTION_PREFS = "city_selection"
     }
 }

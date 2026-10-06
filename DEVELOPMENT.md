@@ -25,6 +25,8 @@
   - [2.10 数据模型](#210-数据模型)
   - [2.11 QWeatherRepository（和风天气，当前默认）](#211-qweatherrepository和风天气当前默认数据源)
   - [2.12 异常体系](#212-异常体系)
+  - [2.13 城市选择记忆仓库（CitySelectionRepository）](#213-城市选择记忆仓库cityselectionrepository)
+  - [2.14 SharedPreferencesCitySelectionRepository](#214-sharedpreferencescityselectionrepository)
 - [3. ViewModel 层详解](#3-viewmodel-层详解)
   - [3.1 WeatherViewModel](#31-weatherviewmodel)
   - [3.2 WeatherUiState](#32-weatheruistate)
@@ -441,6 +443,38 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 
 异常在 ViewModel 层通过 `toErrorType()` 转换为 `WeatherUiState.ErrorType` 枚举，UI 层不直接处理异常类。
 
+### 2.13 城市选择记忆仓库（CitySelectionRepository）
+
+**文件：** `data/CitySelectionRepository.kt`
+
+```kotlin
+interface CitySelectionRepository {
+    fun getSelectedCity(): City?
+    fun saveSelectedCity(city: City)
+    fun clearSelectedCity()
+}
+```
+
+**设计要点：**
+- 持久化用户**最近一次手动选择的城市**，供 GPS 定位失败时回退取天气
+- 应用重启后记忆仍保留（由实现决定持久化方式）
+- 方法与 `CityRepository` 一样为同步函数，存储量小无需协程
+
+### 2.14 SharedPreferencesCitySelectionRepository
+
+**文件：** `data/SharedPreferencesCitySelectionRepository.kt`
+
+基于 `SharedPreferences` 的记忆城市实现。
+
+**存储结构：** 单个 key 下保存城市 5 个字段（`name` / `pinyin` / `abbreviation` / `latitude` / `longitude`），
+经纬度以**字符串**存储，避免 Float 精度损失；读取时 `toDoubleOrNull()` 解析失败视为未记忆（安全降级）。
+
+**设计要点：**
+- `SharedPreferences` 实例由**调用方注入**（`MainActivity` 传入），不持有 Context，
+  便于单元测试（MockK 模拟）与未来替换存储实现
+- 写入使用 `Editor.apply()`（内存立即生效、磁盘异步落盘），不阻塞主线程
+- 预置文件名 `city_selection` 定义在 `MainActivity` companion object
+
 ---
 
 ## 3. ViewModel 层详解
@@ -468,6 +502,7 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 | locationRepository | `LocationRepository?` | 定位数据源（构造注入，可空） |
 | geocodingRepository | `GeocodingRepository?` | 地理编码数据源（构造注入，可空） |
 | cityRepository | `CityRepository?` | 城市搜索数据源（构造注入，可空） |
+| citySelectionRepository | `CitySelectionRepository?` | 记忆城市数据源（构造注入，可空） |
 
 **关键方法：**
 
@@ -482,20 +517,22 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
   - 无数据或错误时进入 Loading 状态
   - **流程**：先定位 → 再用定位坐标取天气
     - `locationRepository` 不为 null 时调用 `getCurrentLocation()`
-    - 定位失败 → `Error(GPS_UNAVAILABLE)`
+    - **定位失败 → 回退记忆城市**：若 `citySelectionRepository` 中存在记忆城市（最近一次手动选择），
+      直接以该城市坐标取天气并进入 `Success`（`locationName` = 城市名），不进入错误页；
+      无记忆城市时才维持 `Error`（`GPS_UNAVAILABLE`，展示最后一次已知位置）
     - 定位成功 → 并行获取位置名称 + 天气数据
-    - `locationRepository` 为 null 时回退到硬编码坐标
+    - `locationRepository` 为 null 时：存在记忆城市优先使用记忆城市，否则回退到硬编码坐标
   - 通过 `viewModelScope` 启动协程，ViewModel 销毁时自动取消
 
 - `openCitySearch()`：打开城市搜索页，初始化搜索结果为全部城市
 - `closeCitySearch()`：关闭城市搜索页
 - `searchCity(query: String)`：根据关键字搜索城市（中文名/拼音/缩写）
-- `selectCity(city: City)`：选择城市，获取该城市天气并关闭搜索页
-- `useGpsLocation()`：使用 GPS 定位获取天气并关闭搜索页
+- `selectCity(city: City)`：选择城市，**记忆到 `citySelectionRepository`**，获取该城市天气并关闭搜索页
+- `useGpsLocation()`：使用 GPS 定位获取天气并关闭搜索页（定位失败时同样触发记忆城市回退）
 
 **注入方式：**
 - 构造函数参数注入，默认使用 `MockWeatherRepository()`
-- `locationRepository` / `geocodingRepository` / `cityRepository` 默认为 null（兼容测试）
+- `locationRepository` / `geocodingRepository` / `cityRepository` / `citySelectionRepository` 默认为 null（兼容测试）
 - 未来接入 DI 框架（如 Hilt）后可改为自动注入
 - 测试时可传入 Mock/Fake 实现
 
@@ -525,6 +562,8 @@ sealed interface WeatherUiState {
 - `Error` 状态携带 `locationName`：定位成功但取天气失败时展示已解析的位置名，
   定位失败时展示上一次成功的位置名（ViewModel 中 `lastLocationName` 兜底），
   失败页据此显示位置条并支持「手动选择城市」恢复
+- **记忆城市回退**：定位失败但存在记忆城市时，直接进入 `Success`（展示记忆城市天气），
+  不进入 `Error`；只有「定位失败 + 无记忆城市」或「记忆城市取天气也失败」才进入 `Error`
 - `ErrorType` 枚举区分错误类型，UI 根据类型展示不同文案
 
 **ErrorType 枚举：**
@@ -560,6 +599,10 @@ sealed interface WeatherUiState {
                ▼
          成功/失败 → 回到 Success 或 Error
 ```
+
+**记忆城市回退分支：** `refresh()` 定位失败时，若 `citySelectionRepository` 存在记忆城市，
+直接进入 `Success`（记忆城市坐标取天气，`locationName` = 城市名），不经过 Error；
+无记忆城市时才进入 `Error(GPS_UNAVAILABLE)`。
 
 ---
 
@@ -792,7 +835,8 @@ test/kotlin/com/galaxy/weatherwatch/
 │   └── MainDispatcherRule.kt    # 协程测试调度器规则（必须）
 ├── data/
 │   ├── MockWeatherRepositoryTest.kt
-│   └── OpenWeatherRepositoryTest.kt
+│   ├── OpenWeatherRepositoryTest.kt
+│   └── SharedPreferencesCitySelectionRepositoryTest.kt
 ├── data/model/
 │   └── WeatherIconTest.kt
 └── ui/

@@ -3,6 +3,7 @@ package com.galaxy.weatherwatch.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.galaxy.weatherwatch.data.CityRepository
+import com.galaxy.weatherwatch.data.CitySelectionRepository
 import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.LocationRepository
 import com.galaxy.weatherwatch.data.WeatherRepository
@@ -15,7 +16,8 @@ class WeatherViewModelFactory(
     private val weatherRepository: WeatherRepository,
     private val locationRepository: LocationRepository?,
     private val geocodingRepository: GeocodingRepository?,
-    private val cityRepository: CityRepository? = null
+    private val cityRepository: CityRepository? = null,
+    private val citySelectionRepository: CitySelectionRepository? = null
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
@@ -25,7 +27,8 @@ class WeatherViewModelFactory(
                 weatherRepository = weatherRepository,
                 locationRepository = locationRepository,
                 geocodingRepository = geocodingRepository,
-                cityRepository = cityRepository
+                cityRepository = cityRepository,
+                citySelectionRepository = citySelectionRepository
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

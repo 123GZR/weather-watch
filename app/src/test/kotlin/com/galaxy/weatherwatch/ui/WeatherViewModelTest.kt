@@ -2,6 +2,7 @@ package com.galaxy.weatherwatch.ui
 
 import app.cash.turbine.test
 import com.galaxy.weatherwatch.data.CityRepository
+import com.galaxy.weatherwatch.data.CitySelectionRepository
 import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.LocationRepository
 import com.galaxy.weatherwatch.data.LocationUnavailableException
@@ -680,4 +681,149 @@ class WeatherViewModelTest {
                 cancelAndIgnoreRemainingEvents()
             }
         }
+
+    // ---- 记忆城市回退相关测试 ----
+
+    @Test
+    fun `refresh - 定位失败且存在记忆城市时回退到记忆城市并显示成功`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.failure(LocationUnavailableException())
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                citySelectionRepository = FakeCitySelectionRepository(stored = REMEMBERED_CITY)
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val success = awaitItem() as WeatherUiState.Success
+                assertEquals("应回退到记忆城市并展示其名称", REMEMBERED_CITY.name, success.snapshot.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - 定位失败且记忆城市天气获取失败时 Error 携带城市名`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(
+                simulateDelayMs = 0L,
+                failureMode = MockWeatherRepository.FailureMode.NETWORK
+            )
+            val locationRepo = object : LocationRepository {
+                override suspend fun getCurrentLocation(): Result<LocationResult> =
+                    Result.failure(LocationUnavailableException())
+            }
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                locationRepository = locationRepo,
+                citySelectionRepository = FakeCitySelectionRepository(stored = REMEMBERED_CITY)
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.NO_NETWORK, error.type)
+                assertEquals("失败页应展示回退城市名", REMEMBERED_CITY.name, error.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `refresh - locationRepository 为 null 且存在记忆城市时优先使用记忆城市`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            // locationRepository 不传，默认为 null；存在记忆城市时不应回退到硬编码坐标
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                citySelectionRepository = FakeCitySelectionRepository(stored = REMEMBERED_CITY)
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.refresh()
+
+                val success = awaitItem() as WeatherUiState.Success
+                assertEquals("应使用记忆城市而非硬编码坐标", REMEMBERED_CITY.name, success.snapshot.locationName)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `selectCity - 选择城市后保存到记忆仓库`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val memoryRepo = FakeCitySelectionRepository()
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                cityRepository = LocalCityRepository(),
+                citySelectionRepository = memoryRepo
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                viewModel.selectCity(REMEMBERED_CITY)
+
+                assertTrue(awaitItem() is WeatherUiState.Success)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            assertEquals("选择城市后应记忆到仓库", REMEMBERED_CITY, memoryRepo.stored)
+        }
+
+    @Test
+    fun `refreshWithPermissionCheck - 无权限时不回退记忆城市保持 PERMISSION_DENIED`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val weatherRepo = MockWeatherRepository(simulateDelayMs = 0L)
+            val viewModel = WeatherViewModel(
+                weatherRepository = weatherRepo,
+                citySelectionRepository = FakeCitySelectionRepository(stored = REMEMBERED_CITY)
+            )
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem() is WeatherUiState.Loading)
+
+                // 权限被拒绝属于可操作状态（去设置恢复），不回退记忆城市
+                viewModel.refreshWithPermissionCheck(hasPermission = false)
+
+                val error = awaitItem() as WeatherUiState.Error
+                assertEquals(WeatherUiState.ErrorType.PERMISSION_DENIED, error.type)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    private companion object {
+        val REMEMBERED_CITY = City(
+            name = "佛山市 顺德区",
+            pinyin = "shunde",
+            abbreviation = "sdq",
+            latitude = 22.8400,
+            longitude = 113.2800
+        )
+    }
+}
+
+/** 记录型假实现，用于验证记忆仓库与 ViewModel 的交互 */
+private class FakeCitySelectionRepository(
+    var stored: City? = null
+) : CitySelectionRepository {
+    override fun getSelectedCity(): City? = stored
+    override fun saveSelectedCity(city: City) {
+        stored = city
+    }
+
+    override fun clearSelectedCity() {
+        stored = null
+    }
 }
