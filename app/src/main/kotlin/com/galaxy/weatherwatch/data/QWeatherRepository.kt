@@ -19,6 +19,7 @@ import okhttp3.Request
 import java.net.HttpURLConnection
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -43,8 +44,8 @@ import kotlin.time.Duration.Companion.seconds
 class QWeatherRepository(
     private val apiKey: String,
     apiHost: String,
-    private val httpClient: OkHttpClient = OkHttpClient(),
-    private val json: Json = Json { ignoreUnknownKeys = true },
+    private val httpClient: OkHttpClient = SharedHttpClient,
+    private val json: Json = SharedJson,
     private val lang: String = "zh"
 ) : WeatherRepository {
 
@@ -143,6 +144,21 @@ class QWeatherRepository(
     )
 
     private companion object {
+
+        /** 共享反序列化器：避免每次构造 Repository 重复创建 Json 配置对象。 */
+        val SharedJson: Json = Json { ignoreUnknownKeys = true }
+
+        /**
+         * 共享 HTTP 客户端：连接池在多次刷新间复用（避免重复 TCP+TLS 握手），
+         * 超时按手表网络环境收紧——连接 5s、读取 10s、整体 15s，
+         * 网络异常更快暴露，失败页无需久等。
+         */
+        val SharedHttpClient: OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
 
         /** 将三份响应合并为业务模型 [WeatherSnapshot]。 */
         fun QwNowResponse.toSnapshot(
