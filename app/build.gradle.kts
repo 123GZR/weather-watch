@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    // Baseline Profile：注册 baselineProfile 依赖配置，并把生成器模块的基线配置打包进 APK
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 // 和风天气凭据：从 local.properties 读取（该文件已被 .gitignore 排除，避免密钥入库）。
@@ -98,6 +100,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
+    // 显式提升 fragment（play-services 传递依赖 1.1.0 过旧）：保证
+    // registerForActivityResult 可用且通过 lintVital（release 构建必需）
+    implementation(libs.androidx.fragment.ktx)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))
@@ -126,6 +131,10 @@ dependencies {
 
     // Performance: 在 debug/release 包中安装 Baseline Profile，提升首帧与滚动流畅度
     implementation(libs.androidx.profileinstaller)
+    // 将 :baselineprofile 模块生成的基线配置（baseline-prof.txt）打包进 APK，
+    // 由 profileinstaller 在首次启动时预编译热路径。
+    // 生成方式：手表连接后执行 ./gradlew :baselineprofile:generateBaselineProfile
+    baselineProfile(project(":baselineprofile"))
 
     // Testing
     testImplementation(libs.junit)
