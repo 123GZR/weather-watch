@@ -1,10 +1,11 @@
 package com.galaxy.weatherwatch.ui.components
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -28,6 +29,10 @@ import kotlin.math.sin
  * 矢量绘制没有字体加载与图片解码开销，且月牙路径通过 [remember] 缓存，
  * 背景色只在主题主色变化时重建。
  *
+ * 绘制缓存：使用 [drawWithCache] 替代裸 [Spacer] + Canvas，尺寸换算（缩放系数、
+ * 居中偏移、背景圆半径）在缓存块中只计算一次，帧绘制直接复用，避免滚动时
+ * 每个图标每帧重复计算变换矩阵。
+ *
  * 坐标系：图标在 48x48 设计空间内绘制，再等比缩放到 40.dp 画布。
  */
 @Composable
@@ -45,42 +50,50 @@ fun WeatherIcon(
     // PathOperation.Difference 求差集开销较大，组合期缓存一次，绘制期直接复用
     val moonPath = remember { buildMoonCrescentPath() }
 
-    Canvas(modifier = modifier.size(40.dp)) {
-        drawCircle(color = backgroundColor, radius = size.minDimension / 2f)
-        val unit = size.minDimension / 48f
-        val offsetX = (size.width - size.minDimension) / 2f
-        val offsetY = (size.height - size.minDimension) / 2f
-        withTransform(
-            transformBlock = {
-                translate(offsetX, offsetY)
-                scale(scaleX = unit, scaleY = unit, pivot = Offset.Zero)
-            },
-            drawBlock = {
-                when (icon.toGlyph()) {
-                    WeatherGlyph.SUN -> drawSun(glyphColor)
-                    WeatherGlyph.MOON -> drawPath(moonPath, glyphColor)
-                    WeatherGlyph.CLOUD -> drawCloud(glyphColor)
-                    WeatherGlyph.CLOUD_SUN -> {
-                        drawSunCore(glyphColor, center = Offset(31.5f, 16f), radius = 6.5f)
-                        drawCloud(glyphColor)
-                    }
-                    WeatherGlyph.RAIN -> {
-                        drawCloud(glyphColor)
-                        drawRainDrops(glyphColor)
-                    }
-                    WeatherGlyph.THUNDER -> {
-                        drawCloud(glyphColor)
-                        drawLightning(glyphColor)
-                    }
-                    WeatherGlyph.SNOW -> {
-                        drawCloud(glyphColor)
-                        drawSnowDots(glyphColor)
-                    }
-                    WeatherGlyph.MIST -> drawMist(glyphColor)
+    Spacer(
+        modifier = modifier
+            .size(40.dp)
+            .drawWithCache {
+                // 与尺寸相关的换算只随画布尺寸变化重算，滚动/重组时直接复用
+                val bgRadius = size.minDimension / 2f
+                val unit = size.minDimension / 48f
+                val offsetX = (size.width - size.minDimension) / 2f
+                val offsetY = (size.height - size.minDimension) / 2f
+                onDrawBehind {
+                    drawCircle(color = backgroundColor, radius = bgRadius)
+                    withTransform(
+                        transformBlock = {
+                            translate(offsetX, offsetY)
+                            scale(scaleX = unit, scaleY = unit, pivot = Offset.Zero)
+                        },
+                        drawBlock = {
+                            when (icon.toGlyph()) {
+                                WeatherGlyph.SUN -> drawSun(glyphColor)
+                                WeatherGlyph.MOON -> drawPath(moonPath, glyphColor)
+                                WeatherGlyph.CLOUD -> drawCloud(glyphColor)
+                                WeatherGlyph.CLOUD_SUN -> {
+                                    drawSunCore(glyphColor, center = Offset(31.5f, 16f), radius = 6.5f)
+                                    drawCloud(glyphColor)
+                                }
+                                WeatherGlyph.RAIN -> {
+                                    drawCloud(glyphColor)
+                                    drawRainDrops(glyphColor)
+                                }
+                                WeatherGlyph.THUNDER -> {
+                                    drawCloud(glyphColor)
+                                    drawLightning(glyphColor)
+                                }
+                                WeatherGlyph.SNOW -> {
+                                    drawCloud(glyphColor)
+                                    drawSnowDots(glyphColor)
+                                }
+                                WeatherGlyph.MIST -> drawMist(glyphColor)
+                            }
+                        }
+                    )
                 }
             }
-        )
-    }
+    )
 }
 
 /** 图标到绘制图元的纯映射，便于单元测试覆盖全部 18 种天气枚举。 */

@@ -41,6 +41,15 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/**
+ * 静态共享时间格式化器：DateTimeFormatter 线程安全可复用，
+ * 避免每次刷新/滚动重组时重复创建格式化器与时区查询。
+ */
+private val TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+private val HOUR_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH").withZone(ZoneId.systemDefault())
+
 @Composable
 fun HomeScreen(
     snapshot: WeatherSnapshot,
@@ -193,10 +202,7 @@ private fun RefreshFooter(
     isRefreshing: Boolean,
     onRefresh: () -> Unit
 ) {
-    val time = remember(updatedAt) {
-        val formatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
-        formatter.format(Instant.ofEpochMilli(updatedAt))
-    }
+    val time = remember(updatedAt) { TIME_FORMATTER.format(Instant.ofEpochMilli(updatedAt)) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
@@ -220,10 +226,7 @@ private fun RefreshFooter(
 
 @Composable
 private fun HourlyForecastRow(item: HourlyForecast) {
-    val time = remember(item.epochSecond) {
-        val formatter = DateTimeFormatter.ofPattern("HH").withZone(ZoneId.systemDefault())
-        formatter.format(Instant.ofEpochSecond(item.epochSecond))
-    }
+    val time = remember(item.epochSecond) { HOUR_FORMATTER.format(Instant.ofEpochSecond(item.epochSecond)) }
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

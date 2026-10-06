@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.GalaxyWeatherWatch" parent="android:Theme.DeviceDefault" />
+    <!--
+      启动窗口背景：冷启动到首帧渲染期间窗口显示深色背景，
+      与 Compose 主题背景一致，避免白屏闪烁（surface_dark 见 colors.xml）。
+    -->
+    <style name="Theme.GalaxyWeatherWatch" parent="android:Theme.DeviceDefault">
+        <item name="android:windowBackground">@color/surface_dark</item>
+    </style>
 </resources>

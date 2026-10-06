@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setTheme(android.R.style.Theme_DeviceDefault)
+        // 主题已在 manifest 中声明（Theme.GalaxyWeatherWatch），无需重复 setTheme
 
         setContent {
             GalaxyWeatherWatchTheme {
