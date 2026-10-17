@@ -17,14 +17,14 @@ import com.galaxy.weatherwatch.ui.screens.HomeScreen
 import com.galaxy.weatherwatch.ui.screens.LoadingScreen
 
 /**
- * 顶层导航根：导航探针版（临时）。
+ * 顶层导航根：使用 navigation-compose 的 [NavHost] 管理两个目的地
+ * （home / city_search）；时间由 [AppScaffold] 自动提供 TimeText。
  *
- * 诊断：Wear Compose 1.6.2 的 SwipeDismissableNavHost 在 Wear OS 6（API 36）上走
- * PredictiveBackNavHost 预测性返回路径，存在首屏内容不渲染的嫌疑（真机黑屏、仅 TimeText 可见）。
- * 本探针改用 navigation-compose 的普通 NavHost 验证该假设：
- * - 若正常显示 → 根因锁定为 Wear 预测性返回路径，再定长期方案；
- * - 若仍黑屏 → 问题不在导航宿主，需继续排查 AppScaffold/主题/内容区。
- * 时间由 [AppScaffold] 自动提供 TimeText。
+ * 说明：此处不使用 Wear Compose 的 SwipeDismissableNavHost——其内部在 Wear OS 6
+ * （API 36）上走 PredictiveBackNavHost（预测性返回路径），1.6.2 版本存在首屏内容
+ * 不渲染的缺陷（真机仅显示 TimeText、内容区黑屏；官方修复在 1.7.x，而 1.7.x 要求
+ * API 37+）。改用普通 NavHost 后真机验证正常；右滑返回手势随之放弃，
+ * 系统返回键仍由 NavController 处理。
  */
 @Composable
 fun WeatherAppScreen(

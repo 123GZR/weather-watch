@@ -526,7 +526,7 @@ interface CitySelectionRepository {
 - `useGpsLocation()`：使用 GPS 定位获取天气（定位失败时同样触发记忆城市回退；返回主屏由导航层完成）
 
 > **导航状态说明：** 城市搜索页不再由 ViewModel 的 `showCitySearch` 状态控制，
-> 页面切换全部由导航层（`SwipeDismissableNavHost`）的 `popBackStack()` 完成，
+> 页面切换全部由导航层（`NavHost`）的 `popBackStack()` 完成，
 > ViewModel 只负责初始化搜索结果与触发数据获取。
 
 **注入方式：**
@@ -610,17 +610,17 @@ sealed interface WeatherUiState {
 
 **文件：** `ui/WeatherAppScreen.kt`
 
-应用的顶层导航根，基于 Wear Compose 原生导航（`SwipeDismissableNavHost`）管理两个目的地，
+应用的顶层导航根，基于 navigation-compose 的 `NavHost` 管理两个目的地，
 外层由 `AppScaffold` 提供时间显示（TimeText）：
 
 ```kotlin
 @Composable
 fun WeatherAppScreen(viewModel: WeatherViewModel, ...) {
     val state by viewModel.uiState.collectAsState()
-    val nav = rememberSwipeDismissableNavController()
+    val nav = rememberNavController()
 
     AppScaffold {
-        SwipeDismissableNavHost(navController = nav, startDestination = "home") {
+        NavHost(navController = nav, startDestination = "home") {
             composable("home") {          // 按 uiState 分支三屏
                 when (state) {
                     is Loading -> LoadingScreen()
@@ -637,7 +637,14 @@ fun WeatherAppScreen(viewModel: WeatherViewModel, ...) {
 **导航逻辑：**
 - 路由 `home`（加载/成功/错误三屏）+ `city_search`（城市搜索页）
 - 点击 HomeScreen 顶部位置栏 / ErrorScreen 手动选择城市 → `nav.navigate("city_search")`
-- 选择城市 / 点击 GPS 定位 / 返回键 → `nav.popBackStack()` 回到主屏（支持右滑手势返回）
+- 选择城市 / 点击 GPS 定位 / 返回键 → `nav.popBackStack()` 回到主屏（系统返回键可用）
+
+> **⚠️ 为何不用 `SwipeDismissableNavHost`（重要）：**
+> Wear Compose 1.6.2 的 `SwipeDismissableNavHost` 在 Wear OS 6（API 36）上内部走
+> `PredictiveBackNavHost` 预测性返回路径，存在首屏内容不渲染的缺陷（真机实测：
+> 仅显示 AppScaffold 的 TimeText、内容区黑屏）。官方修复在 1.7.x，但 1.7.x 要求
+> API 37+，API 36 设备不可用。改用普通 `NavHost` 后真机验证正常；代价是放弃
+> Wear 右滑返回手势（项目需求明确不需要），系统返回键仍由 `NavController` 处理。
 
 **性能要点：**
 - 所有回调使用 `remember(viewModel, nav)` 包裹，避免每次重组产生新 lambda
@@ -679,7 +686,7 @@ flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState)
 
 **文件：** `ui/screens/CitySearchScreen.kt`
 
-城市搜索/选择界面，作为 `SwipeDismissableNavHost` 的独立目的地（route `city_search`）。
+城市搜索/选择界面，作为 `NavHost` 的独立目的地（route `city_search`）。
 
 **组成部分：**
 1. **顶部标题栏**：返回按钮 + 「选择城市」标题
@@ -693,7 +700,7 @@ flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState)
 - 搜索框输入实时过滤城市列表
 - 点击城市项 → 选择该城市并获取天气 → `popBackStack` 返回主屏
 - 点击 GPS 定位项 → 走 GPS 定位流程 → `popBackStack` 返回主屏
-- 点击返回按钮 → `popBackStack` 返回主屏（支持右滑手势返回）
+- 点击返回按钮 → `popBackStack` 返回主屏（系统返回键）
 - 旋转表圈控制列表滚动（snap 行为）
 
 **列表实现：** `TransformingLazyColumn` + `TransformingLazyColumnDefaults.snapFlingBehavior`

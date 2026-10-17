@@ -105,7 +105,7 @@ app/                                    # 主应用模块
     │   │   │   ├── CitySelectionRepository.kt # 城市选择记忆仓库接口
     │   │   │   └── SharedPreferencesCitySelectionRepository.kt # 记忆城市持久化（SharedPreferences）
     │   │   └── ui/                     # UI 层
-    │   │       ├── WeatherAppScreen.kt # 顶层导航根（SwipeDismissableNavHost）
+    │   │       ├── WeatherAppScreen.kt # 顶层导航根（NavHost）
     │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态（Hilt 注入）
     │   │       ├── di/DataModule.kt    # Hilt 装配（Provides / Binds）
     │   │       ├── theme/Theme.kt      # 主题配置（Wear M3）
@@ -166,7 +166,7 @@ baselineprofile/                        # Baseline Profile 生成模块
 
 ## 核心特性
 
-- ⌚ **Wear OS 原生体验**：基于 Wear Compose Material 3 + 原生导航（SwipeDismissableNavHost），适配圆形表盘
+- ⌚ **Wear OS 原生体验**：基于 Wear Compose Material 3 + Compose Navigation（NavHost），适配圆形表盘
 - 🌀 **表圈交互**：旋转表圈控制逐时预报列表滚动（snap 行为）
 - 🔍 **手动城市搜索**：支持中文名、拼音、首字母缩写搜索，本地佛山五区城市库
 - 📍 **GPS 定位 + 手动切换**：自动 GPS 定位，也可手动选择城市
@@ -274,8 +274,8 @@ release 构建已自动包含 AGP 生成的 dex 布局优化 profile（`assets/d
 - [x] M3.5 Hilt 依赖注入（替换手写 ViewModel Factory）
 - [x] M4 表圈逐时预报校准
 - [x] M5 手动刷新 + 错误处理
-- [x] M6 Wear M3 迁移 + SwipeDismissableNavHost 原生导航
-- [ ] M7 真机验收
+- [x] M6 Wear M3 迁移 + Compose Navigation 导航
+- [x] M7 真机验收（修复 API 36 导航首屏黑屏：改用 NavHost，放弃 Wear 右滑手势）
 
 ---
 
