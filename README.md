@@ -35,6 +35,8 @@
 | AGP | 8.13.2 |
 | Compose BOM | 2026.05.00（Compose 1.11.1） |
 | Wear Compose | 1.6.2（material3 / foundation / navigation） |
+| Hilt | 2.57.2（hilt-navigation-compose 1.3.0，KSP 编译） |
+| KSP | 2.2.21-2.0.5 |
 
 > ⚠️ **命令行构建必须使用 JDK 17**：Gradle 8.13 不支持在更高版本 JDK（如 Studio 自带 JBR 25）上运行。
 > 每次执行 Gradle 命令前：
@@ -103,10 +105,10 @@ app/                                    # 主应用模块
     │   │   │   ├── CitySelectionRepository.kt # 城市选择记忆仓库接口
     │   │   │   └── SharedPreferencesCitySelectionRepository.kt # 记忆城市持久化（SharedPreferences）
     │   │   └── ui/                     # UI 层
-    │   │       ├── WeatherAppScreen.kt # 顶层路由（状态分发/城市搜索导航）
-    │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态
-    │   │       ├── WeatherViewModelFactory.kt # 依赖注入 Factory
-    │   │       ├── theme/Theme.kt      # 主题配置
+    │   │       ├── WeatherAppScreen.kt # 顶层导航根（SwipeDismissableNavHost）
+    │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态（Hilt 注入）
+    │   │       ├── di/DataModule.kt    # Hilt 装配（Provides / Binds）
+    │   │       ├── theme/Theme.kt      # 主题配置（Wear M3）
     │   │       ├── components/
     │   │       │   ├── WeatherIcon.kt  # Canvas 矢量天气图标
     │   │       │   └── LocationPinIcon.kt # 定位 Pin 图标

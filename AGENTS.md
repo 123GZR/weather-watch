@@ -104,7 +104,7 @@
 ```
 feat(home): 添加逐时预报列表滚动支持
 
-- 使用 ScalingLazyColumn 替代 Column
+- 使用 TransformingLazyColumn 替代 Column
 - 绑定旋转表圈 snap 行为
 - 列表项添加稳定 key 优化重组性能
 ```
