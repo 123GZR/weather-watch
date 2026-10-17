@@ -14,7 +14,6 @@ import androidx.core.content.ContextCompat
 import com.galaxy.weatherwatch.data.AndroidGeocodingRepository
 import com.galaxy.weatherwatch.data.FusedLocationRepository
 import com.galaxy.weatherwatch.data.LocalCityRepository
-import com.galaxy.weatherwatch.data.MockWeatherRepository
 import com.galaxy.weatherwatch.data.QWeatherRepository
 import com.galaxy.weatherwatch.data.SharedPreferencesCitySelectionRepository
 import com.galaxy.weatherwatch.data.WeatherRepository
@@ -27,20 +26,14 @@ import com.google.android.gms.location.LocationServices
 class MainActivity : ComponentActivity() {
 
     /**
-     * 默认数据源为和风天气（QWeather），凭据从 BuildConfig 注入
+     * 天气数据源：和风天气（QWeather），凭据从 BuildConfig 注入
      * （值来自 local.properties，见 app/build.gradle.kts）。
-     * 凭据缺失时（如未配置 local.properties 的开发者机器）回退到 Mock 数据，
-     * 保证项目开箱可跑。
+     * 凭据缺失时请求会返回业务错误码，UI 展示「天气服务暂不可用」错误页。
      */
-    private val weatherRepository: WeatherRepository =
-        if (BuildConfig.QWEATHER_API_KEY.isNotBlank() && BuildConfig.QWEATHER_API_HOST.isNotBlank()) {
-            QWeatherRepository(
-                apiKey = BuildConfig.QWEATHER_API_KEY,
-                apiHost = BuildConfig.QWEATHER_API_HOST
-            )
-        } else {
-            MockWeatherRepository()
-        }
+    private val weatherRepository: WeatherRepository = QWeatherRepository(
+        apiKey = BuildConfig.QWEATHER_API_KEY,
+        apiHost = BuildConfig.QWEATHER_API_HOST
+    )
 
     private val viewModel: WeatherViewModel by viewModels {
         WeatherViewModelFactory(

@@ -8,7 +8,6 @@ import com.galaxy.weatherwatch.data.GeocodingRepository
 import com.galaxy.weatherwatch.data.GpsUnavailableException
 import com.galaxy.weatherwatch.data.LocationRepository
 import com.galaxy.weatherwatch.data.LocationUnavailableException
-import com.galaxy.weatherwatch.data.MockWeatherRepository
 import com.galaxy.weatherwatch.data.NoNetworkException
 import com.galaxy.weatherwatch.data.TimeoutException
 import com.galaxy.weatherwatch.data.WeatherRepository
@@ -24,8 +23,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class WeatherViewModel(
-    private val weatherRepository: WeatherRepository = MockWeatherRepository(),
-    private val locationRepository: LocationRepository? = null,
+    private val weatherRepository: WeatherRepository,
+    private val locationRepository: LocationRepository,
     private val geocodingRepository: GeocodingRepository? = null,
     private val cityRepository: CityRepository? = null,
     private val citySelectionRepository: CitySelectionRepository? = null
@@ -78,44 +77,28 @@ class WeatherViewModel(
             }
 
             // 第一步：获取位置
-            val locationResult = locationRepository?.getCurrentLocation()
-            if (locationResult != null) {
-                locationResult.fold(
-                    onSuccess = { location ->
-                        loadWeatherByGps(location.latitude, location.longitude)
-                    },
-                    onFailure = { throwable ->
-                        // 定位失败：若存在记忆城市，回退到最近一次手动选择的城市取天气（成功态），
-                        // 避免手表室内无 GPS 信号时直接进入错误页；无记忆城市时维持错误态。
-                        val rememberedCity = citySelectionRepository?.getSelectedCity()
-                        if (rememberedCity != null) {
-                            applyWeatherResult(
-                                lat = rememberedCity.latitude,
-                                lon = rememberedCity.longitude,
-                                locationName = rememberedCity.name
-                            )
-                        } else {
-                            _uiState.value = WeatherUiState.Error(
-                                type = throwable.toErrorType(),
-                                locationName = lastLocationName
-                            )
-                        }
+            locationRepository.getCurrentLocation().fold(
+                onSuccess = { location ->
+                    loadWeatherByGps(location.latitude, location.longitude)
+                },
+                onFailure = { throwable ->
+                    // 定位失败：若存在记忆城市，回退到最近一次手动选择的城市取天气（成功态），
+                    // 避免手表室内无 GPS 信号时直接进入错误页；无记忆城市时维持错误态。
+                    val rememberedCity = citySelectionRepository?.getSelectedCity()
+                    if (rememberedCity != null) {
+                        applyWeatherResult(
+                            lat = rememberedCity.latitude,
+                            lon = rememberedCity.longitude,
+                            locationName = rememberedCity.name
+                        )
+                    } else {
+                        _uiState.value = WeatherUiState.Error(
+                            type = throwable.toErrorType(),
+                            locationName = lastLocationName
+                        )
                     }
-                )
-            } else {
-                // locationRepository 为 null（未注入/测试场景）：同样优先使用记忆城市，
-                // 否则回退到硬编码坐标。
-                val rememberedCity = citySelectionRepository?.getSelectedCity()
-                if (rememberedCity != null) {
-                    applyWeatherResult(
-                        lat = rememberedCity.latitude,
-                        lon = rememberedCity.longitude,
-                        locationName = rememberedCity.name
-                    )
-                } else {
-                    loadWeatherByGps(FALLBACK_LAT, FALLBACK_LON)
                 }
-            }
+            )
         }
     }
 
@@ -246,11 +229,6 @@ class WeatherViewModel(
             kotlin.math.abs(lat), latDir,
             kotlin.math.abs(lon), lonDir
         )
-    }
-
-    companion object {
-        private const val FALLBACK_LAT = 39.9042
-        private const val FALLBACK_LON = 116.4074
     }
 }
 

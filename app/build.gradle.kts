@@ -10,7 +10,7 @@ plugins {
 }
 
 // 和风天气凭据：从 local.properties 读取（该文件已被 .gitignore 排除，避免密钥入库）。
-// 缺失时注入空字符串，MainActivity 会回退到 MockWeatherRepository。
+// 缺失时注入空字符串，MainActivity 构造的 QWeatherRepository 请求会失败并展示错误页。
 val qweatherProperties = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) {

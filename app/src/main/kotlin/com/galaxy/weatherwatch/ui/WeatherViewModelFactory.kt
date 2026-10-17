@@ -14,7 +14,7 @@ import com.galaxy.weatherwatch.data.WeatherRepository
  */
 class WeatherViewModelFactory(
     private val weatherRepository: WeatherRepository,
-    private val locationRepository: LocationRepository?,
+    private val locationRepository: LocationRepository,
     private val geocodingRepository: GeocodingRepository?,
     private val cityRepository: CityRepository? = null,
     private val citySelectionRepository: CitySelectionRepository? = null
