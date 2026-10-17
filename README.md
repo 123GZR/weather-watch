@@ -34,8 +34,9 @@
 | Kotlin | 2.2.21 |
 | AGP | 8.13.2 |
 | Compose BOM | 2025.09.00（Compose 1.9.2，与 Wear Compose 1.6.2 声明的 1.9.0 对齐） |
-| Wear Compose | 1.6.2（material3 / foundation / navigation） |
-| Hilt | 2.57.2（hilt-navigation-compose 1.3.0，KSP 编译） |
+| Wear Compose | 1.6.2（material3 / foundation） |
+| Navigation | navigation-compose 2.9.0（NavHost，API 36 首屏黑屏修复方案） |
+| Hilt | 2.57.2（KSP 编译） |
 | KSP | 2.2.21-2.0.5 |
 
 > ⚠️ **命令行构建必须使用 JDK 17**：Gradle 8.13 不支持在更高版本 JDK（如 Studio 自带 JBR 25）上运行。

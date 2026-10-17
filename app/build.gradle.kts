@@ -126,18 +126,17 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    // 导航：navigation-compose（替代 Wear SwipeDismissableNavHost，见 WeatherAppScreen 说明）
+    implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.ui.tooling)
 
     // Wear OS Compose
     implementation(libs.wear.compose.material3)
     implementation(libs.wear.compose.foundation)
-    implementation(libs.wear.compose.navigation)
-    debugImplementation(libs.wear.compose.ui.tooling)
 
     // Hilt（依赖注入）
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
 
     // Location
     implementation(libs.play.services.location)

@@ -44,7 +44,7 @@ import com.galaxy.weatherwatch.ui.components.LocationPinIcon
  * 城市搜索/选择屏幕。
  *
  * 功能：
- * - 顶部标题栏：返回按钮（M3 TextButton）+ 标题；右滑返回由 SwipeDismissableNavHost 提供
+ * - 顶部标题栏：返回按钮（M3 TextButton）+ 标题
  * - 搜索框：支持输入中文名、拼音、首字母缩写进行搜索
  * - GPS 定位项：点击后使用 GPS 定位（或回退记忆城市）
  * - 城市列表：ChildButton 展示匹配城市，点击即选择并返回
@@ -55,7 +55,7 @@ import com.galaxy.weatherwatch.ui.components.LocationPinIcon
  * @param onSearch 查询文本变化回调
  * @param onSelectCity 选择城市回调
  * @param onUseGps 点击 GPS 定位回调
- * @param onBack 返回回调（右滑/按钮返回均由导航层处理）
+ * @param onBack 返回回调（由导航层 popBackStack 处理）
  * @param modifier 修饰符
  */
 @Composable

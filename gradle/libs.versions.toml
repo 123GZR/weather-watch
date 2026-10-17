@@ -4,8 +4,7 @@ kotlin = "2.2.21"
 ksp = "2.2.21-2.0.5"
 # Hilt 2.57.2 为最后一个支持 AGP 8.x + Kotlin 2.2.x 的版本（2.59+ 要求 AGP 9.0+）
 hilt = "2.57.2"
-# hilt-navigation-compose 1.4.0 要求 compileSdk 37 + AGP 9.2，1.3.0 为兼容 API 36 的最新稳定版
-hiltNavigationCompose = "1.3.0"
+# hilt-navigation-compose 1.4.0 要求 compileSdk 37 + AGP 9.2，且项目未使用 hiltViewModel()（改用 by viewModels），不引入
 coreKtx = "1.17.0"
 lifecycle = "2.10.0"
 activityCompose = "1.13.0"
@@ -17,6 +16,8 @@ fragment = "1.8.6"
 # 存在运行时 internal API 失配（NoSuchMethodError）导致真机首帧组合崩溃的风险。
 # navigation-compose 2.9.0（1.7.2+）与 lifecycle 2.10.0（1.9.0+）均兼容此版本。
 composeBom = "2025.09.00"
+# 导航：navigation-compose 2.9.0（SwipeDismissableNavHost 在 API 36 首屏不渲染，改用普通 NavHost）
+navigationCompose = "2.9.0"
 wearCompose = "1.6.2"
 playServicesLocation = "21.4.0"
 kotlinxCoroutines = "1.10.2"
@@ -45,17 +46,15 @@ androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 
 # Wear OS Compose（M3 1.6.2；M2 compose-material 已随 M3 迁移移除）
 wear-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "wearCompose" }
 wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearCompose" }
-wear-compose-navigation = { group = "androidx.wear.compose", name = "compose-navigation", version.ref = "wearCompose" }
-wear-compose-ui-tooling = { group = "androidx.wear.compose", name = "compose-ui-tooling", version.ref = "wearCompose" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
 
 # Location
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
