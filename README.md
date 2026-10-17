@@ -27,13 +27,20 @@
 
 | 组件 | 版本 |
 |------|------|
-| Android Studio | Hedgehog (2023.1) 或更新 |
-| JDK | 17（Android Studio 自带） |
-| Android SDK Platform | API 34（或 API 35） |
-| Gradle | 8.9（自动下载） |
-| Kotlin | 2.0.20 |
-| AGP | 8.6.0 |
-| Wear Compose | 1.4.0 |
+| Android Studio | 2025.x 或更新 |
+| JDK | 17（Temurin，位于 `D:\jdk17`；命令行构建必须显式设置 `JAVA_HOME`） |
+| Android SDK Platform | API 36（compileSdk/targetSdk = 36，minSdk = 30） |
+| Gradle | 8.13（自动下载） |
+| Kotlin | 2.2.21 |
+| AGP | 8.13.2 |
+| Compose BOM | 2026.05.00（Compose 1.11.1） |
+| Wear Compose | 1.6.2（material3 / foundation / navigation） |
+
+> ⚠️ **命令行构建必须使用 JDK 17**：Gradle 8.13 不支持在更高版本 JDK（如 Studio 自带 JBR 25）上运行。
+> 每次执行 Gradle 命令前：
+> ```powershell
+> $env:JAVA_HOME = "D:\jdk17"; $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+> ```
 
 依赖版本统一管理在 `gradle/libs.versions.toml`，升级依赖请修改该文件。
 
@@ -42,9 +49,9 @@
 ## 首次打开
 
 1. 用 Android Studio 打开 `d:\app` 目录
-2. Studio 会自动检测 `gradle-wrapper.properties`，并下载 Gradle 8.9
+2. Studio 会自动检测 `gradle-wrapper.properties`，并下载 Gradle 8.13
    - 如果提示 `gradle-wrapper.jar` 缺失，在 Studio 弹窗中选择 "Use Gradle Wrapper" 即可自动补全
-3. SDK Manager 勾选 API 34（或 35）+ Build-Tools
+3. SDK Manager 勾选 API 36 + Build-Tools（AGP 首次同步会自动安装）
 4. 等待首次 Sync 完成
 
 > 项目已配置阿里云 Maven 镜像，国内网络环境下依赖下载通常无需额外配置。
