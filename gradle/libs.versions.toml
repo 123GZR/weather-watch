@@ -12,7 +12,11 @@ activityCompose = "1.13.0"
 # 与 activity 1.13.0 配套的 Fragment 版本：play-services 传递依赖 fragment 过旧，
 # 不满足 registerForActivityResult 的最低要求（lint 阻断 release 构建），显式提升
 fragment = "1.8.6"
-composeBom = "2026.05.00"
+# Compose BOM 2025.09.00（Compose 1.9.x）：与 Wear Compose 1.6.2 官方声明基准对齐。
+# 此前 2026.05.00 解析出 1.11.1，高于 Wear 1.6.2 所基于的 1.9.0 两个 minor，
+# 存在运行时 internal API 失配（NoSuchMethodError）导致真机首帧组合崩溃的风险。
+# navigation-compose 2.9.0（1.7.2+）与 lifecycle 2.10.0（1.9.0+）均兼容此版本。
+composeBom = "2025.09.00"
 wearCompose = "1.6.2"
 playServicesLocation = "21.4.0"
 kotlinxCoroutines = "1.10.2"

@@ -33,7 +33,7 @@
 | Gradle | 8.13（自动下载） |
 | Kotlin | 2.2.21 |
 | AGP | 8.13.2 |
-| Compose BOM | 2026.05.00（Compose 1.11.1） |
+| Compose BOM | 2025.09.00（Compose 1.9.2，与 Wear Compose 1.6.2 声明的 1.9.0 对齐） |
 | Wear Compose | 1.6.2（material3 / foundation / navigation） |
 | Hilt | 2.57.2（hilt-navigation-compose 1.3.0，KSP 编译） |
 | KSP | 2.2.21-2.0.5 |
