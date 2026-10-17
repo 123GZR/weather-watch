@@ -14,7 +14,7 @@
   - [1.3 单向数据流](#13-单向数据流)
 - [2. 数据层详解](#2-数据层详解)
   - [2.1 WeatherRepository 接口](#21-weatherrepository-接口)
-  - [2.2 MockWeatherRepository](#22-mockweatherrepository)
+  - [2.2 WeatherExceptions（业务异常）](#22-weatherexceptions业务异常)
   - [2.3 OpenWeatherRepository](#23-openweatherrepository)
   - [2.4 LocationRepository 接口](#24-locationrepository-接口)
   - [2.5 FusedLocationRepository](#25-fusedlocationrepository)
@@ -92,15 +92,13 @@
             ▼
 ┌───────────────────────────────────────────────────────┐
 │                    Data Layer                          │
-│  ┌──────────────────────┐  ┌──────────────────────┐  │
-│  │ MockWeatherRepository│  │ QWeatherRepository   │  │
-│  │ (本地假数据)          │  │ (和风天气 API, 默认) │  │
-│  └──────────┬───────────┘  └──────────┬───────────┘  │
-│             │                         │               │
-│             └───────────┬─────────────┘               │
-│                         │                             │
-│                   WeatherRepository                    │
-│                    (接口契约)                          │
+│  ┌──────────────────────────────────────────────┐      │
+│  │            QWeatherRepository                │      │
+│  │            (和风天气 API, 默认)               │      │
+│  └──────────────────┬───────────────────────────┘      │
+│                     │                                  │
+│               WeatherRepository                        │
+│                (接口契约)                              │
 │                                                       │
 │  ┌────────────────────────────────────────────────┐   │
 │  │          FusedLocationRepository                │   │
@@ -174,20 +172,12 @@ interface WeatherRepository {
 - 返回 `Result<T>`，成功/失败统一封装，不直接抛异常
 - 接口参数为经纬度，不关心具体定位实现（遵循单一职责）
 
-### 2.2 MockWeatherRepository
+### 2.2 WeatherExceptions（业务异常）
 
-**文件：** `data/MockWeatherRepository.kt`
+**文件：** `data/WeatherExceptions.kt`
 
-本地假数据实现，用于：
-- UI 开发与调试（无需网络）
-- 单元测试（可控制失败模式）
-- 演示与原型验证
-
-**核心能力：**
-- `simulateDelayMs`：模拟网络延迟
-- `FailureMode`：可配置的失败模式（NONE / NETWORK / TIMEOUT / API / GPS）
-- 生成 12 小时逐时预报数据
-- 每次刷新时间戳递增
+天气数据源的业务异常定义（原随 MockWeatherRepository 移除后提取为独立文件），
+供真实数据源与 ViewModel 错误类型映射共用。完整异常表见 [2.12 异常体系](#212-异常体系)。
 
 ### 2.3 OpenWeatherRepository
 
@@ -426,11 +416,11 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 **凭据注入：**
 - `local.properties`（已被 .gitignore 排除）配置 `qweather.apiKey` / `qweather.apiHost`
 - `app/build.gradle.kts` 通过 `buildConfigField` 注入 `BuildConfig.QWEATHER_API_KEY` / `QWEATHER_API_HOST`
-- `MainActivity` 构造 `QWeatherRepository`；凭据缺失时回退 `MockWeatherRepository`，保证项目开箱可跑
+- `MainActivity` 构造 `QWeatherRepository`；凭据缺失时请求返回业务错误码，UI 展示错误页
 
 ### 2.12 异常体系
 
-天气相关异常定义在 `MockWeatherRepository.kt` 文件底部，定位相关异常定义在 `FusedLocationRepository.kt` 文件底部：
+天气相关异常定义在 `WeatherExceptions.kt`，定位相关异常定义在 `FusedLocationRepository.kt` 文件底部：
 
 | 异常类 | 触发场景 | UI 展示 |
 |--------|---------|---------|
@@ -531,10 +521,9 @@ interface CitySelectionRepository {
 - `useGpsLocation()`：使用 GPS 定位获取天气并关闭搜索页（定位失败时同样触发记忆城市回退）
 
 **注入方式：**
-- 构造函数参数注入，默认使用 `MockWeatherRepository()`
-- `locationRepository` / `geocodingRepository` / `cityRepository` / `citySelectionRepository` 默认为 null（兼容测试）
+- 构造函数参数注入（`weatherRepository` / `locationRepository` 必填；`geocodingRepository` / `cityRepository` / `citySelectionRepository` 可空）
+- `MainActivity` 通过 `WeatherViewModelFactory` 注入全部实现
 - 未来接入 DI 框架（如 Hilt）后可改为自动注入
-- 测试时可传入 Mock/Fake 实现
 
 ### 3.2 WeatherUiState
 
@@ -827,47 +816,22 @@ AGP 自动生成 dex 布局优化 profile（`assets/dexopt/baseline.prof`）
 
 ## 6. 测试指南
 
-### 6.1 测试结构
+> ⚠️ **测试代码已移除（2026-10）**：`app/src/test/` 目录下的全部单元测试已随模拟数据源一并删除，
+> 项目不再维护单元测试。构建脚本中的测试依赖（JUnit4 / MockK / Turbine / coroutines-test 等）
+> 仍保留，便于将来恢复测试。
 
-```
-test/kotlin/com/galaxy/weatherwatch/
-├── util/
-│   └── MainDispatcherRule.kt    # 协程测试调度器规则（必须）
-├── data/
-│   ├── MockWeatherRepositoryTest.kt
-│   ├── OpenWeatherRepositoryTest.kt
-│   └── SharedPreferencesCitySelectionRepositoryTest.kt
-├── data/model/
-│   └── WeatherIconTest.kt
-└── ui/
-    ├── WeatherViewModelTest.kt
-    ├── components/
-    │   └── WeatherIconGlyphTest.kt
-    └── theme/
-        └── ThemeTest.kt
-```
+### 6.1 恢复测试
 
-### 6.2 测试工具
+需要在 `app/src/test/` 下重新添加测试文件即可（依赖已就绪），运行：
 
-| 工具 | 用途 | 依赖 |
-|------|------|------|
-| JUnit4 | 测试框架 | junit |
-| MockK | Mock 框架 | mockk |
-| Turbine | Flow 测试 | turbine |
-| kotlinx-coroutines-test | 协程测试 | kotlinx-coroutines-test |
-
-### 6.3 编写测试的原则
-
-1. **数据层必须测试**：Repository 的成功/失败路径、数据转换、异常映射
-2. **ViewModel 必须测试**：状态流转、刷新逻辑、错误处理、防抖
-3. **有计算逻辑的 UI 组件要测试**：如图标绘制、时间格式化
-4. **测试应独立**：每个测试方法不依赖其他测试的状态
-5. **使用 TestDispatcher**：协程测试必须使用 `TestDispatcher` 和 `MainDispatcherRule`
-
-**运行测试：**
 ```bash
 ./gradlew :app:testDebugUnitTest
 ```
+
+历史测试覆盖（删除前）：
+- **数据层**：Repository 实现（QWeather / OpenWeather / LocalCity / 城市记忆）、数据转换、异常映射
+- **ViewModel 层**：状态流转、刷新逻辑、错误处理、防抖
+- **UI 层**：图标绘制映射（WeatherIconGlyph）、主题
 
 ---
 
@@ -926,7 +890,7 @@ test/kotlin/com/galaxy/weatherwatch/
 | ViewModel | 以 `ViewModel` 结尾 | `WeatherViewModel` |
 | UI 状态 | 以 `UiState` 结尾 | `WeatherUiState` |
 | 屏幕级 Composable | 以 `Screen` 结尾 | `HomeScreen` |
-| Repository 实现 | 前缀 + Repository | `MockWeatherRepository` |
+| Repository 实现 | 前缀 + Repository | `QWeatherRepository` |
 
 ---
 
@@ -952,8 +916,8 @@ test/kotlin/com/galaxy/weatherwatch/
 ### Q: 如何切换数据源？
 
 当前默认数据源已是和风天气 `QWeatherRepository`（凭据在 `local.properties`，经 BuildConfig 注入，见 2.11）。
-如需切换回本地假数据，将 `MainActivity` 中 `weatherRepository` 改为 `MockWeatherRepository()` 即可；
-`WeatherViewModel` 只依赖 `WeatherRepository` 接口，数据层替换无需改动上层。未来可通过 DI 框架（如 Hilt）统一管理。
+项目已移除本地假数据源（`MockWeatherRepository`）；如需替换数据源，实现 `WeatherRepository` 接口并在
+`MainActivity` 中注入即可，`WeatherViewModel` 只依赖接口，数据层替换无需改动上层。未来可通过 DI 框架（如 Hilt）统一管理。
 
 ### Q: 如何添加新的天气状态？
 

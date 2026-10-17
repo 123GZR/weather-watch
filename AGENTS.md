@@ -8,7 +8,8 @@
 
 1、每次改动完成后，都必须创建一个对应的 Git commit，以便后续追踪和回滚。
 
-2、每次改动后，都必须编写或更新相关测试，并在交付给用户前，确保所有测试和验证全部通过。
+2、每次改动后，都必须完成构建验证（`:app:assembleDebug`），并在交付给用户前确保验证通过。
+   （单元测试已移除，见「四、测试要求」；如已恢复测试，仍需确保测试全部通过。）
 
 3、**每次新增、修改或删除功能后，必须同步更新相关文档**（README.md / DEVELOPMENT.md / 本文件），
    确保文档与代码保持一致。文档更新应与代码改动在同一个 commit 中提交。
@@ -53,22 +54,23 @@
 - 包名统一使用 `com.galaxy.weatherwatch` 前缀
 - ViewModel 类以 `ViewModel` 结尾，UI 状态以 `UiState` 结尾
 - 屏幕级 Composable 以 `Screen` 结尾，组件级以组件功能命名
-- Repository 接口直接命名，实现类加前缀（如 `MockWeatherRepository`、`OpenWeatherRepository`）
+- Repository 接口直接命名，实现类加前缀（如 `QWeatherRepository`、`FusedLocationRepository`）
 
 ### 3.3 异常处理
 
 - 数据层所有异常封装为 `Result<T>` 返回
-- 自定义异常放在对应 Repository 文件底部
+- 业务异常统一放在 `data/WeatherExceptions.kt`（天气层）与 `FusedLocationRepository.kt` 底部（定位层）
 - UI 层通过 `WeatherUiState.ErrorType` 枚举区分错误类型，不直接展示异常消息
 
 ---
 
 ## 四、测试要求
 
-- 新增 Repository 实现必须有对应的单元测试
-- 新增 ViewModel 逻辑必须有对应的单元测试（使用 Turbine 测试 Flow）
-- 新增数据模型转换逻辑必须有对应的单元测试
-- UI 组件若包含绘制/计算逻辑（如 WeatherIcon），需有对应测试
+> **当前状态（2026-10）**：单元测试代码已移除，本项目暂不要求编写单元测试。
+> 构建脚本中的测试依赖（JUnit / MockK / Turbine / coroutines-test）仍保留，
+> 将来恢复测试时直接在 `app/src/test/` 添加即可。
+
+- 若重新引入单元测试，遵循：新增 Repository 实现、ViewModel 逻辑、数据模型转换逻辑应有对应测试
 - 运行测试命令：`./gradlew :app:testDebugUnitTest`
 
 ---

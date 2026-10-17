@@ -84,7 +84,7 @@ app/                                    # 主应用模块
     │   │   │   │   ├── LocationResult.kt # 定位结果模型
     │   │   │   │   └── City.kt         # 城市数据模型
     │   │   │   ├── WeatherRepository.kt       # 天气仓库接口
-    │   │   │   ├── MockWeatherRepository.kt   # 本地假数据
+    │   │   │   ├── WeatherExceptions.kt       # 天气业务异常（网络/超时/服务端/GPS）
     │   │   │   ├── QWeatherRepository.kt      # 和风天气实现（当前默认）
     │   │   │   ├── OpenWeatherRepository.kt   # OWM One Call 3.0 实现（保留参考）
     │   │   │   ├── LocationRepository.kt      # 定位仓库接口
@@ -98,6 +98,7 @@ app/                                    # 主应用模块
     │   │   └── ui/                     # UI 层
     │   │       ├── WeatherAppScreen.kt # 顶层路由（状态分发/城市搜索导航）
     │   │       ├── WeatherViewModel.kt # ViewModel + UI 状态
+    │   │       ├── WeatherViewModelFactory.kt # 依赖注入 Factory
     │   │       ├── theme/Theme.kt      # 主题配置
     │   │       ├── components/
     │   │       │   ├── WeatherIcon.kt  # Canvas 矢量天气图标
@@ -111,15 +112,6 @@ app/                                    # 主应用模块
     │       ├── values/{strings,colors,themes}.xml
     │       ├── drawable/ic_launcher_foreground.xml
     │       └── mipmap-anydpi-v26/ic_launcher{,_round}.xml
-    └── test/kotlin/com/galaxy/weatherwatch/
-        ├── util/MainDispatcherRule.kt  # 协程测试调度器规则
-        ├── data/MockWeatherRepositoryTest.kt
-        ├── data/OpenWeatherRepositoryTest.kt
-        ├── data/SharedPreferencesCitySelectionRepositoryTest.kt
-        ├── data/model/WeatherIconTest.kt
-        ├── ui/WeatherViewModelTest.kt
-        ├── ui/components/WeatherIconGlyphTest.kt
-        └── ui/theme/ThemeTest.kt
 
 baselineprofile/                        # Baseline Profile 生成模块
 └── src/main/kotlin/.../BaselineProfileGenerator.kt
@@ -148,7 +140,7 @@ baselineprofile/                        # Baseline Profile 生成模块
                    ▼
 ┌─────────────────────────────────────────────┐
 │               Data Layer                     │
-│  MockWeatherRepository / QWeatherRepository   │
+│               QWeatherRepository              │
 │     (数据获取、解析、异常封装为 Result)       │
 └─────────────────────────────────────────────┘
 ```
@@ -175,7 +167,6 @@ baselineprofile/                        # Baseline Profile 生成模块
 - ⚡ **Compose Strong Skipping**：Kotlin 2.0 编译器默认开启，跳过稳定参数的重组
 - 📊 **单一状态流**：合并加载状态与数据，减少重组次数
 - 🔄 **增量刷新**：已有数据时刷新不闪回 Loading 态
-- 🧪 **完善测试**：数据层、ViewModel、UI 组件均有单元测试
 - 🚀 **Baseline Profile**：预编译热路径，提升首帧与滚动流畅度
 
 ---
@@ -231,13 +222,10 @@ release 构建已自动包含 AGP 生成的 dex 布局优化 profile（`assets/d
 
 ## 测试
 
-运行单元测试：
+> ⚠️ 单元测试代码已移除（2026-10），构建脚本中的测试依赖（JUnit / MockK / Turbine 等）保留，
+> 便于将来恢复测试。需要恢复时在 `app/src/test/` 重新添加测试文件即可。
 
-```bash
-./gradlew :app:testDebugUnitTest
-```
-
-测试覆盖范围：
+历史测试范围（删除前）：
 - **数据层**：Repository 实现、数据模型、异常处理
 - **ViewModel 层**：状态流转、刷新逻辑、错误处理
 - **UI 层**：组件绘制逻辑（如 WeatherIcon）、主题
@@ -259,7 +247,7 @@ release 构建已自动包含 AGP 生成的 dex 布局优化 profile（`assets/d
   ```
   > API Host 在 console.qweather.com → 控制台 → 设置 中查看；2026 年起和风天气已停用公共域名
   > `api.qweather.com` / `devapi.qweather.com`，必须使用账号专属 Host（形如 `h2a9cf3mhs.xy.qweatherapi.com`）。
-- 凭据缺失时自动回退 `MockWeatherRepository`（本地假数据），保证项目开箱可跑
+- 凭据缺失时请求会返回业务错误码，UI 展示「天气服务暂不可用」错误页（项目不再包含本地假数据源）
 - 历史实现：`OpenWeatherRepository`（OWM One Call API 3.0，保留作参考）
 
 > 切换数据源：只需修改 `MainActivity` 中 `weatherRepository` 的注入，`WeatherViewModel` 只依赖接口。
