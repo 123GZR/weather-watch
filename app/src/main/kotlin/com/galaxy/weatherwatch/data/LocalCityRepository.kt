@@ -1,6 +1,8 @@
 package com.galaxy.weatherwatch.data
 
 import com.galaxy.weatherwatch.data.model.City
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * 本地城市库实现，当前仅包含佛山市五区。
@@ -12,7 +14,8 @@ import com.galaxy.weatherwatch.data.model.City
  *
  * 搜索不区分大小写。
  */
-class LocalCityRepository : CityRepository {
+@Singleton
+class LocalCityRepository @Inject constructor() : CityRepository {
 
     override fun searchCities(query: String): List<City> {
         val trimmed = query.trim()

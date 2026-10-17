@@ -4,11 +4,14 @@ import android.content.Context
 import android.location.Address
 import android.location.Geocoder
 import android.os.Build
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Locale
 import kotlin.coroutines.CoroutineContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * 基于 Android 原生 Geocoder 的反向地理编码实现。
@@ -19,8 +22,9 @@ import kotlin.coroutines.CoroutineContext
  * - API 33 以下使用阻塞式 getFromLocation(lat, lon, maxResults)
  * - 失败时返回 null，由调用方决定降级策略
  */
-class AndroidGeocodingRepository(
-    private val context: Context,
+@Singleton
+class AndroidGeocodingRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val dispatcher: CoroutineContext = Dispatchers.IO
 ) : GeocodingRepository {
 

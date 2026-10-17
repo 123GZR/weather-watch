@@ -13,6 +13,7 @@ import com.galaxy.weatherwatch.data.TimeoutException
 import com.galaxy.weatherwatch.data.WeatherRepository
 import com.galaxy.weatherwatch.data.model.City
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -21,13 +22,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-class WeatherViewModel(
+@HiltViewModel
+class WeatherViewModel @Inject constructor(
     private val weatherRepository: WeatherRepository,
     private val locationRepository: LocationRepository,
-    private val geocodingRepository: GeocodingRepository? = null,
-    private val cityRepository: CityRepository? = null,
-    private val citySelectionRepository: CitySelectionRepository? = null
+    private val geocodingRepository: GeocodingRepository,
+    private val cityRepository: CityRepository,
+    private val citySelectionRepository: CitySelectionRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
@@ -84,7 +87,7 @@ class WeatherViewModel(
                 onFailure = { throwable ->
                     // 定位失败：若存在记忆城市，回退到最近一次手动选择的城市取天气（成功态），
                     // 避免手表室内无 GPS 信号时直接进入错误页；无记忆城市时维持错误态。
-                    val rememberedCity = citySelectionRepository?.getSelectedCity()
+                    val rememberedCity = citySelectionRepository.getSelectedCity()
                     if (rememberedCity != null) {
                         applyWeatherResult(
                             lat = rememberedCity.latitude,
@@ -157,9 +160,7 @@ class WeatherViewModel(
 
     /** 打开城市搜索页，初始化搜索结果为全部城市 */
     fun openCitySearch() {
-        cityRepository?.let { repo ->
-            _citySearchResults.value = repo.getAllCities()
-        }
+        _citySearchResults.value = cityRepository.getAllCities()
         _showCitySearch.value = true
     }
 
@@ -173,9 +174,7 @@ class WeatherViewModel(
      * 支持中文名、全拼、拼音首字母缩写匹配。
      */
     fun searchCity(query: String) {
-        cityRepository?.let { repo ->
-            _citySearchResults.value = repo.searchCities(query)
-        }
+        _citySearchResults.value = cityRepository.searchCities(query)
     }
 
     /**
@@ -184,7 +183,7 @@ class WeatherViewModel(
      */
     fun selectCity(city: City) {
         _showCitySearch.value = false
-        citySelectionRepository?.saveSelectedCity(city)
+        citySelectionRepository.saveSelectedCity(city)
         refreshWithCoordinates(city.latitude, city.longitude, city.name)
     }
 
@@ -218,10 +217,8 @@ class WeatherViewModel(
      * 解析位置名称：优先反向地理编码，失败时降级为经纬度格式。
      */
     private suspend fun resolveLocationName(lat: Double, lon: Double): String {
-        geocodingRepository?.let { repo ->
-            val name = repo.getLocationName(lat, lon)
-            if (!name.isNullOrBlank()) return name
-        }
+        val name = geocodingRepository.getLocationName(lat, lon)
+        if (!name.isNullOrBlank()) return name
         // 降级：显示经纬度
         val latDir = if (lat >= 0) "N" else "S"
         val lonDir = if (lon >= 0) "E" else "W"

@@ -123,6 +123,13 @@
 - 数据层的具体实现对 ViewModel 透明，切换数据源只需修改注入
 - ViewModel 不持有任何 UI 相关引用（Context、View 等）
 
+**依赖注入（Hilt）：**
+- `WeatherApplication` 标注 `@HiltAndroidApp`，生成 Hilt 组件
+- `di/DataModule.kt`：`DataProvidesModule` 提供 `QWeatherRepository`（BuildConfig 凭据）、
+  `FusedLocationProviderClient`、`SharedPreferences`；`DataBindsModule` 完成接口 → 实现的绑定
+- `WeatherViewModel` 标注 `@HiltViewModel`，五个仓库参数由 `@Inject constructor` 注入；
+  `MainActivity` 标注 `@AndroidEntryPoint`，通过 `by viewModels()` 获取
+
 ### 1.3 单向数据流
 
 项目遵循**单向数据流**（Unidirectional Data Flow）模式：
@@ -416,7 +423,8 @@ OWM 天气图标的枚举映射，共 18 种（白天/夜晚各 9 种）：
 **凭据注入：**
 - `local.properties`（已被 .gitignore 排除）配置 `qweather.apiKey` / `qweather.apiHost`
 - `app/build.gradle.kts` 通过 `buildConfigField` 注入 `BuildConfig.QWEATHER_API_KEY` / `QWEATHER_API_HOST`
-- `MainActivity` 构造 `QWeatherRepository`；凭据缺失时请求返回业务错误码，UI 展示错误页
+- `di/DataModule.kt` 的 `provideWeatherRepository()` 构造 `QWeatherRepository`（Hilt 提供）；
+  凭据缺失时请求返回业务错误码，UI 展示错误页
 
 ### 2.12 异常体系
 
@@ -460,10 +468,10 @@ interface CitySelectionRepository {
 经纬度以**字符串**存储，避免 Float 精度损失；读取时 `toDoubleOrNull()` 解析失败视为未记忆（安全降级）。
 
 **设计要点：**
-- `SharedPreferences` 实例由**调用方注入**（`MainActivity` 传入），不持有 Context，
-  便于单元测试（MockK 模拟）与未来替换存储实现
+- `SharedPreferences` 实例由 **Hilt 注入**（`di/DataModule.provideCitySelectionPrefs()` 提供），
+  实现类不持有 Context，便于单元测试（MockK 模拟）与替换存储实现
 - 写入使用 `Editor.apply()`（内存立即生效、磁盘异步落盘），不阻塞主线程
-- 预置文件名 `city_selection` 定义在 `MainActivity` companion object
+- 预置文件名 `city_selection` 定义在 `di/DataModule.kt` 的 `provideCitySelectionPrefs()`
 
 ---
 
@@ -488,11 +496,11 @@ interface CitySelectionRepository {
 | citySearchResults | `StateFlow<List<City>>` | 城市搜索结果列表 |
 | refreshJob | `Job?` | 当前刷新任务，用于防重复刷新 |
 | lastLocationName | `String` | 最近一次成功获取的位置名称，失败页展示兜底 |
-| weatherRepository | `WeatherRepository` | 天气数据源（构造注入，默认 Mock） |
-| locationRepository | `LocationRepository?` | 定位数据源（构造注入，可空） |
-| geocodingRepository | `GeocodingRepository?` | 地理编码数据源（构造注入，可空） |
-| cityRepository | `CityRepository?` | 城市搜索数据源（构造注入，可空） |
-| citySelectionRepository | `CitySelectionRepository?` | 记忆城市数据源（构造注入，可空） |
+| weatherRepository | `WeatherRepository` | 天气数据源（Hilt 注入） |
+| locationRepository | `LocationRepository` | 定位数据源（Hilt 注入） |
+| geocodingRepository | `GeocodingRepository` | 地理编码数据源（Hilt 注入） |
+| cityRepository | `CityRepository` | 城市搜索数据源（Hilt 注入） |
+| citySelectionRepository | `CitySelectionRepository` | 记忆城市数据源（Hilt 注入） |
 
 **关键方法：**
 
@@ -506,12 +514,11 @@ interface CitySelectionRepository {
   - 已有数据时保留旧快照、只翻转 `isRefreshing` 标记
   - 无数据或错误时进入 Loading 状态
   - **流程**：先定位 → 再用定位坐标取天气
-    - `locationRepository` 不为 null 时调用 `getCurrentLocation()`
+    - 调用 `locationRepository.getCurrentLocation()`
     - **定位失败 → 回退记忆城市**：若 `citySelectionRepository` 中存在记忆城市（最近一次手动选择），
       直接以该城市坐标取天气并进入 `Success`（`locationName` = 城市名），不进入错误页；
       无记忆城市时才维持 `Error`（`GPS_UNAVAILABLE`，展示最后一次已知位置）
     - 定位成功 → 并行获取位置名称 + 天气数据
-    - `locationRepository` 为 null 时：存在记忆城市优先使用记忆城市，否则回退到硬编码坐标
   - 通过 `viewModelScope` 启动协程，ViewModel 销毁时自动取消
 
 - `openCitySearch()`：打开城市搜索页，初始化搜索结果为全部城市
@@ -521,9 +528,9 @@ interface CitySelectionRepository {
 - `useGpsLocation()`：使用 GPS 定位获取天气并关闭搜索页（定位失败时同样触发记忆城市回退）
 
 **注入方式：**
-- 构造函数参数注入（`weatherRepository` / `locationRepository` 必填；`geocodingRepository` / `cityRepository` / `citySelectionRepository` 可空）
-- `MainActivity` 通过 `WeatherViewModelFactory` 注入全部实现
-- 未来接入 DI 框架（如 Hilt）后可改为自动注入
+- `@HiltViewModel` + `@Inject constructor`：五个仓库参数全部由 Hilt 组件提供（非空）
+- `MainActivity` 标注 `@AndroidEntryPoint`，通过 `by viewModels()` 获取 ViewModel
+- 装配点：`di/DataModule.kt`（Provides / Binds）与各 Repository 的 `@Inject` 构造
 
 ### 3.2 WeatherUiState
 
@@ -916,8 +923,9 @@ AGP 自动生成 dex 布局优化 profile（`assets/dexopt/baseline.prof`）
 ### Q: 如何切换数据源？
 
 当前默认数据源已是和风天气 `QWeatherRepository`（凭据在 `local.properties`，经 BuildConfig 注入，见 2.11）。
-项目已移除本地假数据源（`MockWeatherRepository`）；如需替换数据源，实现 `WeatherRepository` 接口并在
-`MainActivity` 中注入即可，`WeatherViewModel` 只依赖接口，数据层替换无需改动上层。未来可通过 DI 框架（如 Hilt）统一管理。
+如需替换数据源：实现 `WeatherRepository` 接口并修改 `di/DataModule.kt` 的
+`provideWeatherRepository()`（改为返回新实现）即可，`WeatherViewModel` 只依赖接口，
+数据层替换无需改动上层。
 
 ### Q: 如何添加新的天气状态？
 

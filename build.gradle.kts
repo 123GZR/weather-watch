@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.androidx.baselineprofile) apply false
+    alias(libs.plugins.hilt) apply false
+    alias(libs.plugins.ksp) apply false
 }
 
 // 统一 JDK 版本：所有子模块共享 Java 17 工具链，避免环境差异导致的编译问题

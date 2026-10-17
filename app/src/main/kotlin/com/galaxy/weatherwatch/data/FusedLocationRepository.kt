@@ -6,6 +6,8 @@ import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.tasks.await
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * 基于 Google Play Services FusedLocationProviderClient 的定位实现。
@@ -21,7 +23,8 @@ import kotlinx.coroutines.tasks.await
  * - 室内环境 GPS 无法定位，但网络定位可用
  * - 先快速定位让用户尽快看到结果，再异步尝试高精度（本实现用串行降级）
  */
-class FusedLocationRepository(
+@Singleton
+class FusedLocationRepository @Inject constructor(
     private val fusedLocationClient: FusedLocationProviderClient
 ) : LocationRepository {
 

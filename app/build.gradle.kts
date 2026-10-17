@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     // Baseline Profile：注册 baselineProfile 依赖配置，并把生成器模块的基线配置打包进 APK
     alias(libs.plugins.androidx.baselineprofile)
+    // Hilt + KSP：依赖注入（替换手写 ViewModel Factory）
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp)
 }
 
 // 和风天气凭据：从 local.properties 读取（该文件已被 .gitignore 排除，避免密钥入库）。
@@ -117,6 +120,11 @@ dependencies {
     // Wear OS Compose
     implementation(libs.wear.compose.material)
     implementation(libs.wear.compose.foundation)
+
+    // Hilt（依赖注入）
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
 
     // Location
     implementation(libs.play.services.location)

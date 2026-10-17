@@ -2,6 +2,8 @@ package com.galaxy.weatherwatch.data
 
 import android.content.SharedPreferences
 import com.galaxy.weatherwatch.data.model.City
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * 基于 SharedPreferences 的城市选择记忆仓库实现。
@@ -15,7 +17,8 @@ import com.galaxy.weatherwatch.data.model.City
  * - 数据量小且为单键写入，使用同步 API 足够；写入采用 [android.content.SharedPreferences.Editor.apply]
  *   异步落盘，不阻塞主线程
  */
-class SharedPreferencesCitySelectionRepository(
+@Singleton
+class SharedPreferencesCitySelectionRepository @Inject constructor(
     private val prefs: SharedPreferences
 ) : CitySelectionRepository {
 
