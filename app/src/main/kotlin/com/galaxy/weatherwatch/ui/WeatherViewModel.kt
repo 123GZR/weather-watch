@@ -36,10 +36,6 @@ class WeatherViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
     val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
-    /** 是否显示城市搜索页 */
-    private val _showCitySearch = MutableStateFlow(false)
-    val showCitySearch: StateFlow<Boolean> = _showCitySearch.asStateFlow()
-
     /** 城市搜索结果列表 */
     private val _citySearchResults = MutableStateFlow<List<City>>(emptyList())
     val citySearchResults: StateFlow<List<City>> = _citySearchResults.asStateFlow()
@@ -158,15 +154,9 @@ class WeatherViewModel @Inject constructor(
 
     // ---- 城市搜索相关 ----
 
-    /** 打开城市搜索页，初始化搜索结果为全部城市 */
-    fun openCitySearch() {
+    /** 初始化城市搜索页数据：搜索结果重置为全部城市（由导航层负责页面切换） */
+    fun initializeCitySearch() {
         _citySearchResults.value = cityRepository.getAllCities()
-        _showCitySearch.value = true
-    }
-
-    /** 关闭城市搜索页 */
-    fun closeCitySearch() {
-        _showCitySearch.value = false
     }
 
     /**
@@ -178,21 +168,21 @@ class WeatherViewModel @Inject constructor(
     }
 
     /**
-     * 选择指定城市并获取该城市天气，然后关闭搜索页。
+     * 选择指定城市并获取该城市天气。
      * 同时把该城市记忆到本地，供后续定位失败时回退使用。
+     * 页面返回由导航 popBackStack 完成。
      */
     fun selectCity(city: City) {
-        _showCitySearch.value = false
         citySelectionRepository.saveSelectedCity(city)
         refreshWithCoordinates(city.latitude, city.longitude, city.name)
     }
 
     /**
-     * 使用 GPS 定位获取天气，然后关闭搜索页。
+     * 使用 GPS 定位获取天气。
      * 若定位不可用则走正常 refresh 流程（含错误处理）。
+     * 页面返回由导航 popBackStack 完成。
      */
     fun useGpsLocation() {
-        _showCitySearch.value = false
         refresh()
     }
 

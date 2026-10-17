@@ -5,15 +5,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
-import androidx.wear.compose.material.CircularProgressIndicator
-import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.Text
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.Text
 import com.galaxy.weatherwatch.ui.WeatherUiState
 import com.galaxy.weatherwatch.ui.components.LocationBar
 
@@ -48,51 +50,59 @@ fun ErrorScreen(
     val isPermissionDenied = type == WeatherUiState.ErrorType.PERMISSION_DENIED
     val buttonAction = if (isPermissionDenied) onOpenAppSettings else onRetry
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // 顶部位置条：失败时仍可点击，进入城市选择后按所选位置获取天气
-        LocationBar(
-            locationName = locationName.ifBlank { "未获取位置" },
-            onClick = onLocationClick,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 32.dp)
-        )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+    ScreenScaffold { contentPadding ->
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(contentPadding)
         ) {
-            Text(
-                text = type.title(),
-                style = MaterialTheme.typography.title2,
-                color = MaterialTheme.colors.error
+            // 顶部位置条：失败时仍可点击，进入城市选择后按所选位置获取天气
+            LocationBar(
+                locationName = locationName.ifBlank { "未获取位置" },
+                onClick = onLocationClick,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp)
             )
-            Text(
-                text = type.hint(),
-                style = MaterialTheme.typography.body2,
-                color = MaterialTheme.colors.onSurface
-            )
-            Button(
-                onClick = buttonAction,
-                enabled = !isRefreshing,
-                modifier = Modifier.padding(top = 4.dp)
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (isRefreshing) {
-                    CircularProgressIndicator()
-                } else {
-                    Text(text = if (isPermissionDenied) "去设置" else "重试")
+                Text(
+                    text = type.title(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = type.hint(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Button(
+                    onClick = buttonAction,
+                    enabled = !isRefreshing,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(text = if (isPermissionDenied) "去设置" else "重试")
+                    }
                 }
-            }
-            // 手动选择城市：按用户指定的位置获取天气，不依赖 GPS/网络自动定位
-            Button(
-                onClick = onPickCity,
-                enabled = !isRefreshing,
-                colors = ButtonDefaults.secondaryButtonColors()
-            ) {
-                Text(text = "手动选择城市")
+                // 手动选择城市：按用户指定的位置获取天气，不依赖 GPS/网络自动定位
+                FilledTonalButton(
+                    onClick = onPickCity,
+                    enabled = !isRefreshing
+                ) {
+                    Text(text = "手动选择城市")
+                }
             }
         }
     }

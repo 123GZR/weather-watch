@@ -1,7 +1,6 @@
 package com.galaxy.weatherwatch.baselineprofile
 
-import androidx.benchmark.macro.BaselineProfileRule
-import androidx.benchmark.macro.junit4.baselineprofile
+import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
@@ -33,7 +32,7 @@ class BaselineProfileGenerator {
         startActivityAndWait()
         device.waitForIdle()
 
-        // 滚动逐时预报列表，覆盖 ScalingLazyColumn 的组合与绘制热路径
+        // 滚动逐时预报列表，覆盖 TransformingLazyColumn（Wear Compose M3）的组合与绘制热路径
         val list = device.findObject(By.scrollable(true))
         if (list != null) {
             list.setGestureMargin(device.displayWidth / 5)

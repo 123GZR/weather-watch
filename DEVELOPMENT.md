@@ -492,7 +492,6 @@ interface CitySelectionRepository {
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | uiState | `StateFlow<WeatherUiState>` | UI 状态流（只读对外暴露） |
-| showCitySearch | `StateFlow<Boolean>` | 是否显示城市搜索页 |
 | citySearchResults | `StateFlow<List<City>>` | 城市搜索结果列表 |
 | refreshJob | `Job?` | 当前刷新任务，用于防重复刷新 |
 | lastLocationName | `String` | 最近一次成功获取的位置名称，失败页展示兜底 |
@@ -521,11 +520,14 @@ interface CitySelectionRepository {
     - 定位成功 → 并行获取位置名称 + 天气数据
   - 通过 `viewModelScope` 启动协程，ViewModel 销毁时自动取消
 
-- `openCitySearch()`：打开城市搜索页，初始化搜索结果为全部城市
-- `closeCitySearch()`：关闭城市搜索页
+- `initializeCitySearch()`：初始化搜索结果为全部城市（页面切换由导航层负责）
 - `searchCity(query: String)`：根据关键字搜索城市（中文名/拼音/缩写）
-- `selectCity(city: City)`：选择城市，**记忆到 `citySelectionRepository`**，获取该城市天气并关闭搜索页
-- `useGpsLocation()`：使用 GPS 定位获取天气并关闭搜索页（定位失败时同样触发记忆城市回退）
+- `selectCity(city: City)`：选择城市，**记忆到 `citySelectionRepository`**，获取该城市天气（返回主屏由导航层 `popBackStack` 完成）
+- `useGpsLocation()`：使用 GPS 定位获取天气（定位失败时同样触发记忆城市回退；返回主屏由导航层完成）
+
+> **导航状态说明：** 城市搜索页不再由 ViewModel 的 `showCitySearch` 状态控制，
+> 页面切换全部由导航层（`SwipeDismissableNavHost`）的 `popBackStack()` 完成，
+> ViewModel 只负责初始化搜索结果与触发数据获取。
 
 **注入方式：**
 - `@HiltViewModel` + `@Inject constructor`：五个仓库参数全部由 Hilt 组件提供（非空）
@@ -604,41 +606,43 @@ sealed interface WeatherUiState {
 
 ## 4. UI 层详解
 
-### 4.1 WeatherAppScreen（顶层路由）
+### 4.1 WeatherAppScreen（顶层导航根）
 
 **文件：** `ui/WeatherAppScreen.kt`
 
-应用的顶层 Composable，负责状态分发、页面路由与城市搜索导航：
+应用的顶层导航根，基于 Wear Compose 原生导航（`SwipeDismissableNavHost`）管理两个目的地，
+外层由 `AppScaffold` 提供时间显示（TimeText）：
 
 ```kotlin
 @Composable
 fun WeatherAppScreen(viewModel: WeatherViewModel, ...) {
     val state by viewModel.uiState.collectAsState()
-    val showCitySearch by viewModel.showCitySearch.collectAsState()
-    val citySearchResults by viewModel.citySearchResults.collectAsState()
+    val nav = rememberSwipeDismissableNavController()
 
-    Box {
-        if (showCitySearch) {
-            CitySearchScreen(...) // 城市搜索页（覆盖层）
-        } else {
-            when (state) {     // 主界面
-                is Loading -> LoadingScreen()
-                is Success -> HomeScreen(...)
-                is Error -> ErrorScreen(...)
+    AppScaffold {
+        SwipeDismissableNavHost(navController = nav, startDestination = "home") {
+            composable("home") {          // 按 uiState 分支三屏
+                when (state) {
+                    is Loading -> LoadingScreen()
+                    is Success -> HomeScreen(...)
+                    is Error -> ErrorScreen(...)
+                }
             }
+            composable("city_search") { CitySearchScreen(...) }
         }
     }
 }
 ```
 
 **导航逻辑：**
-- 城市搜索页以覆盖层形式展示在主界面之上
-- 点击 HomeScreen 顶部位置栏 → 打开城市搜索页
-- 选择城市 / 点击 GPS 定位 / 点击返回 → 关闭城市搜索页
+- 路由 `home`（加载/成功/错误三屏）+ `city_search`（城市搜索页）
+- 点击 HomeScreen 顶部位置栏 / ErrorScreen 手动选择城市 → `nav.navigate("city_search")`
+- 选择城市 / 点击 GPS 定位 / 返回键 → `nav.popBackStack()` 回到主屏（支持右滑手势返回）
 
 **性能要点：**
-- 所有回调使用 `remember(viewModel)` 包裹，避免每次重组产生新 lambda
+- 所有回调使用 `remember(viewModel, nav)` 包裹，避免每次重组产生新 lambda
 - `when` 表达式对 `sealed interface` 穷尽检查，无需 `else` 分支
+- `LaunchedEffect(Unit)` 在首次进入时触发权限检查
 
 ### 4.2 HomeScreen（主屏）
 
@@ -649,14 +653,16 @@ fun WeatherAppScreen(viewModel: WeatherViewModel, ...) {
 2. **今日摘要卡片**：最高/最低温、降水概率
 3. **逐时预报列表**：可滚动的 12 小时预报
 
-**列表实现：** `ScalingLazyColumn`（Wear OS 专用的可缩放懒加载列表）
+**列表实现：** `TransformingLazyColumn`（Wear Compose Material 3 的懒加载列表，支持缩放焦点效果）
 
 **表圈交互：**
 ```kotlin
-rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState = listState)
+listState = rememberTransformingLazyColumnState()
+flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState)
 ```
 - 绑定旋转表圈输入，旋转表圈可滚动列表
 - 使用 snap 行为，每次旋转对齐到 item 边界
+- 页面容器为 `ScreenScaffold`，刷新入口为右侧 `EdgeButton`
 
 **性能优化：**
 - 每个 item 都有稳定 `key`（如 `"hourly-${forecast.epochSecond}"`）
@@ -673,24 +679,24 @@ rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState
 
 **文件：** `ui/screens/CitySearchScreen.kt`
 
-城市搜索/选择界面，以覆盖层形式展示在主界面之上。
+城市搜索/选择界面，作为 `SwipeDismissableNavHost` 的独立目的地（route `city_search`）。
 
 **组成部分：**
 1. **顶部标题栏**：返回按钮 + 「选择城市」标题
 2. **搜索输入框**：支持中文/拼音/首字母搜索，带清空按钮
 3. **GPS 定位项**：高亮显示，点击后使用 GPS 定位
-4. **城市列表**：匹配搜索结果的城市 Chip 列表
+4. **城市列表**：匹配搜索结果的 M3 `ChildButton` 列表
 5. **无结果提示**：搜索无匹配时显示
 
 **交互：**
 - 进入页面自动聚焦搜索框
 - 搜索框输入实时过滤城市列表
-- 点击城市 Chip → 选择该城市并获取天气 → 关闭搜索页
-- 点击 GPS 定位 Chip → 走 GPS 定位流程 → 关闭搜索页
-- 点击返回按钮 → 关闭搜索页
+- 点击城市项 → 选择该城市并获取天气 → `popBackStack` 返回主屏
+- 点击 GPS 定位项 → 走 GPS 定位流程 → `popBackStack` 返回主屏
+- 点击返回按钮 → `popBackStack` 返回主屏（支持右滑手势返回）
 - 旋转表圈控制列表滚动（snap 行为）
 
-**列表实现：** `ScalingLazyColumn` + `RotaryScrollableDefaults.snapBehavior`
+**列表实现：** `TransformingLazyColumn` + `TransformingLazyColumnDefaults.snapFlingBehavior`
 
 **性能优化：**
 - 每个 item 都有稳定 `key`（如 `"city-${city.name}"`）
@@ -727,11 +733,13 @@ Canvas 矢量绘制的天气图标组件。
 
 **文件：** `ui/theme/Theme.kt`
 
-基于 Wear Compose Material 的主题配置。
+基于 Wear Compose **Material 3** 的主题配置（`wear.compose.material3`）。
 
 **主题组成：**
-- 颜色：深色主题为主（适配手表 AMOLED 屏幕）
-- 排版：Material 3 typography
+- 颜色：`dynamicColorScheme(context)` 优先，取不到动态色时回退品牌色自定义 `ColorScheme`
+  （品牌色 primary `#AECBFA`、secondary `#FDE293`、background `#0B0C10`、onSurface `#E6F0FF`；
+  Wear M3 `ColorScheme` 无 `surface` 槽，深色背景映射到 `surfaceContainerLow/Container/High`）
+- 排版：Material 3 typography（`displayMedium`/`titleMedium`/`titleSmall` 等）
 - 形状：圆角风格
 
 ---
@@ -793,7 +801,7 @@ Canvas 矢量绘制的天气图标组件。
 
 | 优化手段 | 说明 |
 |---------|------|
-| `ScalingLazyColumn` | Wear OS 懒加载列表，只渲染可见区域 |
+| `TransformingLazyColumn` | Wear M3 懒加载列表，只渲染可见区域，带缩放焦点效果 |
 | 稳定 `key` | 每个 item 有唯一 key，刷新时 Compose 可复用实例 |
 | `@Immutable` 列表项数据 | 数据未变时跳过对应 item 的重组 |
 

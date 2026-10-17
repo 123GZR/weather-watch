@@ -164,7 +164,7 @@ baselineprofile/                        # Baseline Profile 生成模块
 
 ## 核心特性
 
-- ⌚ **Wear OS 原生体验**：基于 Wear Compose Material，适配圆形表盘
+- ⌚ **Wear OS 原生体验**：基于 Wear Compose Material 3 + 原生导航（SwipeDismissableNavHost），适配圆形表盘
 - 🌀 **表圈交互**：旋转表圈控制逐时预报列表滚动（snap 行为）
 - 🔍 **手动城市搜索**：支持中文名、拼音、首字母缩写搜索，本地佛山五区城市库
 - 📍 **GPS 定位 + 手动切换**：自动 GPS 定位，也可手动选择城市
@@ -269,9 +269,11 @@ release 构建已自动包含 AGP 生成的 dex 布局优化 profile（`assets/d
 - [x] M2.5 手动输入城市（本地佛山五区城市库 + 搜索）
 - [x] M2.6 记忆城市回退（记住最近选择城市，定位失败自动回退）
 - [x] M3 实时天气主屏（接入和风天气 API）
-- [ ] M4 表圈逐时预报校准
-- [ ] M5 手动刷新 + 错误处理
-- [ ] M6 真机验收
+- [x] M3.5 Hilt 依赖注入（替换手写 ViewModel Factory）
+- [x] M4 表圈逐时预报校准
+- [x] M5 手动刷新 + 错误处理
+- [x] M6 Wear M3 迁移 + SwipeDismissableNavHost 原生导航
+- [ ] M7 真机验收
 
 ---
 

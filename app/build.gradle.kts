@@ -94,6 +94,17 @@ android {
     }
 }
 
+// Workaround：androidx.baselineprofile 1.5.0 插件在 AGP 8.13 下会给 nonMinifiedRelease /
+// benchmarkRelease sourceSet 的 kotlin srcDirs 追加异常 provider 路径（D:\app\app\provider(?），
+// 导致 KSP 的 isParentOf 路径解析失败（release 变体构建崩溃）。
+// KSP 遍历的是 KGP 的 allKotlinSourceSets，因此需在 KGP 侧用替换语义 setSrcDirs 重设。
+// 待 baselineprofile 插件发布修复版本后删除本段。
+afterEvaluate {
+    kotlin.sourceSets.matching { it.name == "nonMinifiedRelease" || it.name == "benchmarkRelease" }.all {
+        kotlin.setSrcDirs(listOf("src/${name}/kotlin", "src/${name}/java", "src/release/java"))
+    }
+}
+
 // 组合性能说明：Kotlin 2.0.20 的 Compose 编译器默认开启 strong skipping
 // （带稳定参数的 Composable 可跳过重组），无需额外配置；
 // 若未来升级 Kotlin 版本后默认值变化，可通过 featureFlags 显式控制：
@@ -118,8 +129,10 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     // Wear OS Compose
-    implementation(libs.wear.compose.material)
+    implementation(libs.wear.compose.material3)
     implementation(libs.wear.compose.foundation)
+    implementation(libs.wear.compose.navigation)
+    debugImplementation(libs.wear.compose.ui.tooling)
 
     // Hilt（依赖注入）
     implementation(libs.hilt.android)

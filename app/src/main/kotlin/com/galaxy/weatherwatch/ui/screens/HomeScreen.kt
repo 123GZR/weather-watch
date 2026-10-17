@@ -1,41 +1,37 @@
 package com.galaxy.weatherwatch.ui.screens
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
-import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
-import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.CircularProgressIndicator
-import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.PositionIndicator
-import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.TitleCard
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
+import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.TitleCard
 import com.galaxy.weatherwatch.data.model.CurrentWeather
 import com.galaxy.weatherwatch.data.model.DailySummary
 import com.galaxy.weatherwatch.data.model.HourlyForecast
 import com.galaxy.weatherwatch.data.model.WeatherSnapshot
-import com.galaxy.weatherwatch.ui.components.LocationBar
+import com.galaxy.weatherwatch.ui.components.LocationPinIcon
 import com.galaxy.weatherwatch.ui.components.WeatherIcon
 import java.time.Instant
 import java.time.ZoneId
@@ -50,6 +46,10 @@ private val TIME_FORMATTER: DateTimeFormatter =
 private val HOUR_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH").withZone(ZoneId.systemDefault())
 
+/**
+ * 首页（成功态）：TransformingLazyColumn 列表。
+ * 位置入口为列表首项（点击进入城市搜索）；刷新入口为右侧 EdgeButton。
+ */
 @Composable
 fun HomeScreen(
     snapshot: WeatherSnapshot,
@@ -58,87 +58,81 @@ fun HomeScreen(
     onLocationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberScalingLazyListState()
-    val bgColor = MaterialTheme.colors.background
+    val listState = rememberTransformingLazyColumnState()
 
-    Box(modifier = modifier.fillMaxSize()) {
-        ScalingLazyColumn(
+    ScreenScaffold(
+        modifier = modifier,
+        scrollState = listState,
+        edgeButton = {
+            EdgeButton(onClick = onRefresh, enabled = !isRefreshing) {
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("刷新")
+                }
+            }
+        }
+    ) { contentPadding ->
+        TransformingLazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // 顶部额外留出空间给固定位置条
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 56.dp),
+            contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            // 旋转表圈输入：ScalingLazyColumn 内部会用 rememberActiveFocusRequester()
+            // 旋转表圈输入：TransformingLazyColumn 内部会用 rememberActiveFocusRequester()
             // 绑定 focusRequester，这里只需提供 snap 行为。
-            rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(scrollableState = listState)
+            flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(state = listState)
         ) {
+            // 位置入口：列表首项，点击进入城市搜索页
+            item(key = "location-header") {
+                LocationHeader(locationName = snapshot.locationName, onClick = onLocationClick)
+            }
             item(key = "current-header") { CurrentWeatherHeader(snapshot.current) }
             item(key = "today-summary") { TodaySummaryRow(snapshot.today) }
-            item(key = "divider") { Spacer(modifier = Modifier.height(4.dp)) }
             item(key = "hourly-title") {
-                Text(
-                    text = "逐时预报",
-                    style = MaterialTheme.typography.title3,
-                    color = MaterialTheme.colors.onSurface
-                )
+                ListHeader {
+                    Text(
+                        text = "逐时预报",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
             // 稳定 key：刷新后同一小时的 item 直接跳过重组，只重组数据变化的行
             snapshot.hourly.forEach { forecast ->
                 item(key = "hourly-${forecast.epochSecond}") { HourlyForecastRow(forecast) }
             }
-            item(key = "refresh-footer") {
-                RefreshFooter(
-                    updatedAt = snapshot.current.updatedAt,
-                    isRefreshing = isRefreshing,
-                    onRefresh = onRefresh
-                )
+            item(key = "updated-at") {
+                UpdatedAtText(updatedAt = snapshot.current.updatedAt)
             }
         }
-
-        // 顶部渐隐遮罩：让滚动内容在位置条下方自然淡出
-        TopFadeOverlay(
-            backgroundColor = bgColor,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(56.dp)
-        )
-
-        // 顶部固定位置条（在遮罩之上）
-        LocationBar(
-            locationName = snapshot.locationName,
-            onClick = onLocationClick,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 32.dp)
-        )
-
-        PositionIndicator(scalingLazyListState = listState)
     }
 }
 
 /**
- * 顶部渐隐遮罩：
- * 顶部与背景色一致（不透明），向下逐渐过渡到透明，
- * 让 ScalingLazyColumn 中向上滚动的内容在位置条区域自然"消失"。
+ * 位置入口：以列表首项形式展示当前位置，点击进入城市搜索页。
  */
 @Composable
-private fun TopFadeOverlay(
-    backgroundColor: Color,
-    modifier: Modifier = Modifier
-) {
-    val brush = remember(backgroundColor) {
-        Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.0f to backgroundColor,
-                0.65f to backgroundColor.copy(alpha = 0.85f),
-                1.0f to backgroundColor.copy(alpha = 0f)
-            )
+private fun LocationHeader(locationName: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LocationPinIcon(sizeDp = 16)
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = locationName,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-    }
-
-    Canvas(modifier = modifier) {
-        drawRect(brush = brush)
     }
 }
 
@@ -157,25 +151,26 @@ private fun CurrentWeatherHeader(current: CurrentWeather) {
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = "${current.temp.toInt()}°",
-                style = MaterialTheme.typography.display2,
-                color = MaterialTheme.colors.onSurface
+                style = MaterialTheme.typography.displayMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
         Text(
             text = "体感 ${current.feelsLike.toInt()}° · ${current.description}",
-            style = MaterialTheme.typography.body2,
-            color = MaterialTheme.colors.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
     }
 }
 
+/** 「今日」摘要卡：非交互卡片（NonClickableCard 语义） */
 @Composable
 private fun TodaySummaryRow(today: DailySummary) {
     TitleCard(
-        onClick = { },
-        title = { Text("今日") }
+        title = { Text("今日") },
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -191,37 +186,30 @@ private fun TodaySummaryRow(today: DailySummary) {
 @Composable
 private fun SummaryCell(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.title2, color = MaterialTheme.colors.onSurface)
-        Text(text = label, style = MaterialTheme.typography.body2, color = MaterialTheme.colors.onSurfaceVariant)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
+/** 列表末项：数据更新时间（刷新动作已由右侧 EdgeButton 承担） */
 @Composable
-private fun RefreshFooter(
-    updatedAt: Long,
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit
-) {
+private fun UpdatedAtText(updatedAt: Long) {
     val time = remember(updatedAt) { TIME_FORMATTER.format(Instant.ofEpochMilli(updatedAt)) }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "更新于 $time",
-            style = MaterialTheme.typography.body2,
-            color = MaterialTheme.colors.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Button(onClick = onRefresh, enabled = !isRefreshing) {
-            if (isRefreshing) {
-                CircularProgressIndicator()
-            } else {
-                Text("刷新")
-            }
-        }
-    }
+    Text(
+        text = "更新于 $time",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+    )
 }
 
 @Composable
@@ -232,13 +220,13 @@ private fun HourlyForecastRow(item: HourlyForecast) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = "$time 时", style = MaterialTheme.typography.body1, color = MaterialTheme.colors.onSurface)
+        Text(text = "$time 时", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
         WeatherIcon(icon = item.icon)
-        Text(text = "${item.temp.toInt()}°", style = MaterialTheme.typography.title2, color = MaterialTheme.colors.onSurface)
+        Text(text = "${item.temp.toInt()}°", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
         Text(
             text = if (item.precipProbability > 0.05) "${(item.precipProbability * 100).toInt()}%" else "—",
-            style = MaterialTheme.typography.body2,
-            color = MaterialTheme.colors.onSurfaceVariant
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

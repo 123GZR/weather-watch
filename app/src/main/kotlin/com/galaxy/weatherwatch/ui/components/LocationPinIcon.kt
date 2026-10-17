@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material3.MaterialTheme
 
 /**
  * 定位 Pin 图标：Canvas 矢量绘制。
@@ -28,8 +28,8 @@ fun LocationPinIcon(
     modifier: Modifier = Modifier,
     sizeDp: Int = 16
 ) {
-    val color = MaterialTheme.colors.primary
-    val bgColor = MaterialTheme.colors.background
+    val color = MaterialTheme.colorScheme.primary
+    val bgColor = MaterialTheme.colorScheme.background
     // 贝塞尔路径组合期构建一次，绘制期直接复用
     val pinPath = remember { buildPinPath() }
     val innerPath = remember { buildInnerPinPath() }

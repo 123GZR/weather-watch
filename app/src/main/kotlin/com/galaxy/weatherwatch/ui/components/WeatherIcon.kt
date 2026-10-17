@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material3.MaterialTheme
 import com.galaxy.weatherwatch.data.model.WeatherIcon
 import kotlin.math.cos
 import kotlin.math.sin
@@ -40,10 +40,10 @@ fun WeatherIcon(
     icon: WeatherIcon,
     modifier: Modifier = Modifier
 ) {
-    val glyphColor = MaterialTheme.colors.onSurface
-    // MaterialTheme.colors 是 @Composable getter，先在组合作用域取值，
+    val glyphColor = MaterialTheme.colorScheme.onSurface
+    // MaterialTheme.colorScheme 是 @Composable getter，先在组合作用域取值，
     // 再放入 remember 的 key 与 lambda，避免非组合上下文调用报错
-    val primaryColor = MaterialTheme.colors.primary
+    val primaryColor = MaterialTheme.colorScheme.primary
     val backgroundColor = remember(primaryColor) {
         primaryColor.copy(alpha = 0.18f)
     }
